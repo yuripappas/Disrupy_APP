@@ -1,0 +1,107 @@
+import { Settings, Bell, Globe, Users, Key } from "lucide-react";
+
+export default function ConfiguracoesPage() {
+  return (
+    <div className="p-8 max-w-2xl">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold" style={{ color: "#0F172A" }}>
+          Configurações
+        </h1>
+        <p className="text-sm mt-1" style={{ color: "#64748B" }}>
+          Gerencie integrações, notificações e usuários
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <Section icon={<Globe className="w-4 h-4" />} title="Integrações">
+          <ConfigItem label="iClips ERP" value="API Key configurada · AgencyId 5050" status="ok" />
+          <ConfigItem label="Evolution API (WhatsApp)" value="Não configurado" status="pending" />
+          <ConfigItem label="Google Drive" value="Não configurado" status="pending" />
+        </Section>
+
+        <Section icon={<Bell className="w-4 h-4" />} title="Notificações">
+          <ConfigItem label="WhatsApp para fornecedores" value="Prazo padrão: 5 dias úteis" status="ok" />
+          <ConfigItem label="E-mail de alertas" value="Não configurado" status="pending" />
+        </Section>
+
+        <Section icon={<Users className="w-4 h-4" />} title="Usuários">
+          <ConfigItem label="Gestor" value="Acesso total" status="ok" />
+          <ConfigItem label="Mídia / Produção / Faturamento" value="Perfis em configuração" status="pending" />
+        </Section>
+
+        <Section icon={<Key className="w-4 h-4" />} title="Automações">
+          <ConfigItem label="Diana (Governo AL)" value="Playwright · não configurado" status="pending" />
+          <ConfigItem label="PPE SEBRAE" value="Playwright · não configurado" status="pending" />
+        </Section>
+      </div>
+
+      <div
+        className="mt-8 rounded-xl border p-5"
+        style={{ borderColor: "#E2E8F0", backgroundColor: "#F8FAFC" }}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <Settings className="w-4 h-4" style={{ color: "#94A3B8" }} />
+          <p className="text-sm font-semibold" style={{ color: "#334155" }}>
+            Sobre esta versão
+          </p>
+        </div>
+        <p className="text-xs" style={{ color: "#94A3B8" }}>
+          Disrupy Faturamento v0.1.0 · MVP — Modo local com dados simulados.
+          <br />
+          Integrações reais serão ativadas na próxima fase do projeto.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#E2E8F0" }}>
+      <div
+        className="flex items-center gap-2 px-5 py-4"
+        style={{ borderBottom: "1px solid #E2E8F0", color: "#334155" }}
+      >
+        <span style={{ color: "#64748B" }}>{icon}</span>
+        <span className="text-sm font-semibold">{title}</span>
+      </div>
+      <div className="divide-y" style={{ borderColor: "#F1F5F9" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ConfigItem({
+  label,
+  value,
+  status,
+}: {
+  label: string;
+  value: string;
+  status: "ok" | "pending" | "error";
+}) {
+  const dot = {
+    ok: "#10B981",
+    pending: "#F59E0B",
+    error: "#EF4444",
+  }[status];
+
+  return (
+    <div className="flex items-center justify-between px-5 py-3.5">
+      <div>
+        <p className="text-sm font-medium" style={{ color: "#334155" }}>{label}</p>
+        <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{value}</p>
+      </div>
+      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: dot }} />
+    </div>
+  );
+}
