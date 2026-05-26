@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -8,7 +9,6 @@ import {
   Users,
   ShieldCheck,
   Settings,
-  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,16 +27,14 @@ export function Sidebar() {
     <aside className="w-58 min-h-screen flex flex-col" style={{ backgroundColor: "#00246D" }}>
       {/* Logo */}
       <div className="px-5 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-7 h-7 flex items-center justify-center rounded"
-            style={{ backgroundColor: "#2E60FF" }}
-          >
-            <Zap className="w-4 h-4" style={{ color: "#00E7FF" }} fill="currentColor" />
-          </div>
-          <span className="text-white font-bold text-base tracking-[0.15em]">DISRUPY</span>
-        </div>
-        <p className="text-xs mt-1.5 tracking-[0.2em] uppercase" style={{ color: "rgba(255,255,255,0.35)" }}>
+        <Image
+          src="/logo-disrupy-branca.svg"
+          alt="Disrupy"
+          width={130}
+          height={30}
+          priority
+        />
+        <p className="text-xs mt-2 tracking-[0.2em] uppercase" style={{ color: "rgba(255,255,255,0.35)" }}>
           Faturamento
         </p>
       </div>
