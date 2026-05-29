@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, FormField, Input, Select } from "@/components/ui/Modal";
@@ -26,39 +26,20 @@ export function EditarFornecedorModal({
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Initialize directly from prop — parent uses key={fornecedor?.id} to remount on change
   const [form, setForm] = useState({
-    tipo: "midia",
-    razao_social: "",
-    cnpj: "",
-    contato_nome: "",
-    contato_whatsapp: "",
-    contato_email: "",
-    telefone: "",
-    email: "",
-    cidade: "",
-    uf: "",
-    site: "",
+    tipo: fornecedor?.tipo ?? "midia",
+    razao_social: fornecedor?.razao_social ?? "",
+    cnpj: fornecedor?.cnpj ?? "",
+    contato_nome: fornecedor?.contato_nome ?? "",
+    contato_whatsapp: fornecedor?.contato_whatsapp ?? "",
+    contato_email: fornecedor?.contato_email ?? "",
+    telefone: fornecedor?.telefone ?? "",
+    email: fornecedor?.email ?? "",
+    cidade: fornecedor?.cidade ?? "",
+    uf: fornecedor?.uf ?? "",
+    site: fornecedor?.site ?? "",
   });
-
-  useEffect(() => {
-    if (fornecedor) {
-      setForm({
-        tipo: fornecedor.tipo,
-        razao_social: fornecedor.razao_social,
-        cnpj: fornecedor.cnpj ?? "",
-        contato_nome: fornecedor.contato_nome ?? "",
-        contato_whatsapp: fornecedor.contato_whatsapp ?? "",
-        contato_email: fornecedor.contato_email ?? "",
-        telefone: fornecedor.telefone ?? "",
-        email: fornecedor.email ?? "",
-        cidade: fornecedor.cidade ?? "",
-        uf: fornecedor.uf ?? "",
-        site: fornecedor.site ?? "",
-      });
-      setError("");
-      setConfirmDelete(false);
-    }
-  }, [fornecedor]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 

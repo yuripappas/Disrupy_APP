@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, FileText, Clock, CheckCircle, ArrowRight, TrendingUp } from "lucide-react";
+import { AlertTriangle, FileText, CheckCircle, ArrowRight, TrendingUp } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, formatDate } from "@/lib/utils";
 

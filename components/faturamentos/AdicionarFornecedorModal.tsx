@@ -58,15 +58,13 @@ export function AdicionarFornecedorModal({
       });
   }, [open, fornecedoresJaAdicionados]);
 
-  // Reset on close
-  useEffect(() => {
-    if (!open) {
-      setSelecionado(null);
-      setBusca("");
-      setDropdownAberto(false);
-      setForm({ valor: "", honorarios: "", prazo_dias: "5" });
-    }
-  }, [open]);
+  function resetAndClose() {
+    setSelecionado(null);
+    setBusca("");
+    setDropdownAberto(false);
+    setForm({ valor: "", honorarios: "", prazo_dias: "5" });
+    onClose();
+  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -123,12 +121,12 @@ export function AdicionarFornecedorModal({
     );
 
     router.refresh();
-    onClose();
+    resetAndClose();
     setLoading(false);
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Adicionar Fornecedor">
+    <Modal open={open} onClose={resetAndClose} title="Adicionar Fornecedor">
       <form onSubmit={handleSubmit} className="space-y-4">
 
         {/* Combobox fornecedor */}
@@ -289,7 +287,7 @@ export function AdicionarFornecedorModal({
         <div className="flex gap-3 pt-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={resetAndClose}
             className="flex-1 py-2.5 rounded-lg border text-sm font-medium"
             style={{ borderColor: "#E2E8F0", color: "#64748B" }}
           >

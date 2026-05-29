@@ -139,6 +139,7 @@ export function FornecedoresClient({ fornecedores: inicial }: { fornecedores: Fo
 
       <NovoFornecedorModal open={modalOpen} onClose={() => setModalOpen(false)} />
       <EditarFornecedorModal
+        key={editando?.id ?? ""}
         fornecedor={editando}
         onClose={() => setEditando(null)}
         onSaved={handleSaved}

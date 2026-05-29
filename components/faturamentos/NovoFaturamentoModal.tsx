@@ -17,14 +17,6 @@ const ETAPAS_NOMES = [
   "Conclusão",
 ];
 
-const TIPO_LABELS: Record<string, string> = {
-  governo_al: "Governo AL",
-  sebrae: "SEBRAE",
-  prefeitura: "Prefeitura",
-  brk: "BRK",
-  outro: "Outro",
-};
-
 type Cliente = {
   id: string;
   nome: string;
@@ -68,24 +60,26 @@ export function NovoFaturamentoModal({ open, onClose }: { open: boolean; onClose
       .then(({ data }) => setClientes(data ?? []));
   }, [open]);
 
-  // Reset when modal closes
-  useEffect(() => {
-    if (!open) {
-      setClienteSelecionado(null);
-      setClienteBusca("");
-      setDropdownAberto(false);
-      setError("");
-      setForm({
-        nome_campanha: "",
-        cliente_tipo: "governo_al",
-        iclips_job_id: "",
-        secretaria: "",
-        empenho: "",
-        valor_total: "",
-        prazo_dias_uteis: "5",
-      });
-    }
-  }, [open]);
+  function resetForm() {
+    setClienteSelecionado(null);
+    setClienteBusca("");
+    setDropdownAberto(false);
+    setError("");
+    setForm({
+      nome_campanha: "",
+      cliente_tipo: "governo_al",
+      iclips_job_id: "",
+      secretaria: "",
+      empenho: "",
+      valor_total: "",
+      prazo_dias_uteis: "5",
+    });
+  }
+
+  function handleClose() {
+    resetForm();
+    onClose();
+  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -176,7 +170,7 @@ export function NovoFaturamentoModal({ open, onClose }: { open: boolean; onClose
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Novo Faturamento">
+    <Modal open={open} onClose={handleClose} title="Novo Faturamento">
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormField label="Nome da Campanha" required>
           <Input
@@ -309,7 +303,7 @@ export function NovoFaturamentoModal({ open, onClose }: { open: boolean; onClose
         <div className="flex gap-3 pt-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="flex-1 py-2.5 rounded-lg border text-sm font-medium"
             style={{ borderColor: "#E2E8F0", color: "#64748B" }}
           >
