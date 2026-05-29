@@ -22,7 +22,7 @@ const docStatusConfig: Record<string, { label: string; color: string; bg: string
     icon: <Clock className="w-3.5 h-3.5" /> },
   aprovado:  { label: "Aprovado",  color: "#059669", bg: "#ECFDF5",
     icon: <CheckCircle className="w-3.5 h-3.5" /> },
-  rejeitado: { label: "Rejeitado", color: "#DC2626", bg: "#FEF2F2",
+  reprovado: { label: "Reprovado", color: "#DC2626", bg: "#FEF2F2",
     icon: <XCircle className="w-3.5 h-3.5" /> },
 };
 
@@ -272,7 +272,7 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
         <div className="space-y-3">
           {docs
             .sort((a, b) => {
-              const order = { rejeitado: 0, pendente: 1, enviado: 2, aprovado: 3 };
+              const order = { reprovado: 0, pendente: 1, enviado: 2, aprovado: 3 };
               return (order[a.status as keyof typeof order] ?? 1) - (order[b.status as keyof typeof order] ?? 1);
             })
             .map((doc) => (

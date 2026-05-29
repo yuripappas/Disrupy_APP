@@ -27,7 +27,7 @@ const docStatusConfig: Record<string, { label: string; color: string; bg: string
   pendente:  { label: "Pendente",  color: "#94A3B8", bg: "#F1F5F9" },
   enviado:   { label: "Enviado",   color: "#D97706", bg: "#FFFBEB" },
   aprovado:  { label: "Aprovado",  color: "#059669", bg: "#ECFDF5" },
-  rejeitado: { label: "Rejeitado", color: "#DC2626", bg: "#FEF2F2" },
+  reprovado: { label: "Reprovado", color: "#DC2626", bg: "#FEF2F2" },
 };
 
 const clienteTipoLabel: Record<string, string> = {

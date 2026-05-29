@@ -23,5 +23,6 @@ export default async function PortalPage({
 
   if (!ff) notFound();
 
-  return <PortalClient ff={ff as never} token={token} />;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return <PortalClient ff={ff as any} token={token} />;
 }
