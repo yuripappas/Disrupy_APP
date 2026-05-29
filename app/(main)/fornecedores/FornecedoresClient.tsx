@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Mail, MessageCircle, Phone, MapPin, Search, ExternalLink } from "lucide-react";
+import { Plus, Mail, MessageCircle, Phone, MapPin, Search, ExternalLink, Pencil } from "lucide-react";
 import { NovoFornecedorModal } from "@/components/fornecedores/NovoFornecedorModal";
+import { EditarFornecedorModal } from "@/components/fornecedores/EditarFornecedorModal";
 
 function formatWhatsApp(num: string) {
   const n = (num || "").replace(/\D/g, "");
@@ -18,10 +19,21 @@ type Fornecedor = {
   site?: string; ativo: boolean;
 };
 
-export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[] }) {
+export function FornecedoresClient({ fornecedores: inicial }: { fornecedores: Fornecedor[] }) {
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>(inicial);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editando, setEditando] = useState<Fornecedor | null>(null);
   const [busca, setBusca] = useState("");
   const [tipoFiltro, setTipoFiltro] = useState<"todos" | "midia" | "producao">("todos");
+
+  function handleSaved(updated: Fornecedor) {
+    if (!updated.ativo) {
+      setFornecedores((prev) => prev.filter((f) => f.id !== updated.id));
+    } else {
+      setFornecedores((prev) => prev.map((f) => f.id === updated.id ? updated : f));
+    }
+    setEditando(null);
+  }
 
   const filtrados = fornecedores.filter((f) => {
     const matchTipo = tipoFiltro === "todos" || f.tipo === tipoFiltro;
@@ -109,7 +121,7 @@ export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[
                 <span className="text-xs" style={{ color: "#94A3B8" }}>{midia.length} veículos</span>
                 <div className="flex-1 h-px" style={{ backgroundColor: "#E2E8F0" }} />
               </div>
-              <FornecedorTable fornecedores={midia} />
+              <FornecedorTable fornecedores={midia} onEdit={setEditando} />
             </div>
           )}
           {producao.length > 0 && (
@@ -119,18 +131,23 @@ export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[
                 <span className="text-xs" style={{ color: "#94A3B8" }}>{producao.length} fornecedores</span>
                 <div className="flex-1 h-px" style={{ backgroundColor: "#E2E8F0" }} />
               </div>
-              <FornecedorTable fornecedores={producao} />
+              <FornecedorTable fornecedores={producao} onEdit={setEditando} />
             </div>
           )}
         </>
       )}
 
       <NovoFornecedorModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <EditarFornecedorModal
+        fornecedor={editando}
+        onClose={() => setEditando(null)}
+        onSaved={handleSaved}
+      />
     </div>
   );
 }
 
-function FornecedorTable({ fornecedores }: { fornecedores: Fornecedor[] }) {
+function FornecedorTable({ fornecedores, onEdit }: { fornecedores: Fornecedor[]; onEdit: (f: Fornecedor) => void }) {
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#E2E8F0" }}>
       <table className="w-full text-sm">
@@ -141,6 +158,7 @@ function FornecedorTable({ fornecedores }: { fornecedores: Fornecedor[] }) {
             <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide" style={{ color: "#94A3B8" }}>Contato</th>
             <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide" style={{ color: "#94A3B8" }}>E-mail</th>
             <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide" style={{ color: "#94A3B8" }}>Telefone / WhatsApp</th>
+            <th className="w-10" />
           </tr>
         </thead>
         <tbody>
@@ -234,6 +252,17 @@ function FornecedorTable({ fornecedores }: { fornecedores: Fornecedor[] }) {
                   ) : (
                     <span className="text-xs" style={{ color: "#CBD5E1" }}>—</span>
                   )}
+                </td>
+
+                {/* Editar */}
+                <td className="px-2 py-3">
+                  <button
+                    onClick={() => onEdit(f)}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                    title="Editar fornecedor"
+                  >
+                    <Pencil className="w-3.5 h-3.5" style={{ color: "#94A3B8" }} />
+                  </button>
                 </td>
               </tr>
             );
