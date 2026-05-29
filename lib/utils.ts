@@ -13,5 +13,8 @@ export function formatCurrency(value: number): string {
 }
 
 export function formatDate(date: string | Date): string {
-  return new Intl.DateTimeFormat("pt-BR").format(new Date(date));
+  // Explicitly set timezone to avoid server/client hydration mismatch
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(
+    typeof date === "string" ? new Date(date) : date
+  );
 }
