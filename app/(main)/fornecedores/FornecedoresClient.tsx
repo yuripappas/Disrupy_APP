@@ -1,17 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Mail, MessageCircle, Phone, MapPin, Globe, Search } from "lucide-react";
+import { Plus, Mail, MessageCircle, Phone, MapPin, Search, ExternalLink } from "lucide-react";
 import { NovoFornecedorModal } from "@/components/fornecedores/NovoFornecedorModal";
-
-const tipoConfig = {
-  midia: { label: "Mídia", color: "#00246D", bg: "#EEF2FF" },
-  producao: { label: "Produção", color: "#7C3AED", bg: "#F5F3FF" },
-};
 
 function formatWhatsApp(num: string) {
   const n = (num || "").replace(/\D/g, "");
   if (n.length === 11) return `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}`;
+  if (n.length === 10) return `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}`;
   return num;
 }
 
@@ -33,7 +29,9 @@ export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[
     const matchBusca = !q || f.razao_social.toLowerCase().includes(q) ||
       (f.cnpj ?? "").includes(q) ||
       (f.cidade ?? "").toLowerCase().includes(q) ||
-      (f.contato_nome ?? "").toLowerCase().includes(q);
+      (f.contato_nome ?? "").toLowerCase().includes(q) ||
+      (f.contato_email ?? "").toLowerCase().includes(q) ||
+      (f.email ?? "").toLowerCase().includes(q);
     return matchTipo && matchBusca;
   });
 
@@ -60,7 +58,7 @@ export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[
       </div>
 
       {/* Filtros */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#94A3B8" }} />
           <input
@@ -105,27 +103,23 @@ export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[
       ) : (
         <>
           {midia.length > 0 && (
-            <div className="mb-8">
-              <div className="flex items-center gap-3 mb-4">
+            <div className="mb-6">
+              <div className="flex items-center gap-3 mb-2">
                 <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full text-white" style={{ backgroundColor: "#00246D" }}>Mídia</span>
                 <span className="text-xs" style={{ color: "#94A3B8" }}>{midia.length} veículos</span>
                 <div className="flex-1 h-px" style={{ backgroundColor: "#E2E8F0" }} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                {midia.map((f) => <FornecedorCard key={f.id} fornecedor={f} />)}
-              </div>
+              <FornecedorTable fornecedores={midia} />
             </div>
           )}
           {producao.length > 0 && (
             <div>
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-3 mb-2">
                 <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full text-white" style={{ backgroundColor: "#7C3AED" }}>Produção</span>
                 <span className="text-xs" style={{ color: "#94A3B8" }}>{producao.length} fornecedores</span>
                 <div className="flex-1 h-px" style={{ backgroundColor: "#E2E8F0" }} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                {producao.map((f) => <FornecedorCard key={f.id} fornecedor={f} />)}
-              </div>
+              <FornecedorTable fornecedores={producao} />
             </div>
           )}
         </>
@@ -136,50 +130,116 @@ export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[
   );
 }
 
-function FornecedorCard({ fornecedor: f }: { fornecedor: Fornecedor }) {
-  const tipo = tipoConfig[f.tipo];
-  const emailPrincipal = f.contato_email || f.email;
-  const telefonePrincipal = f.contato_whatsapp || f.telefone;
+function FornecedorTable({ fornecedores }: { fornecedores: Fornecedor[] }) {
   return (
-    <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#E2E8F0" }}>
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: tipo.bg, color: tipo.color }}>{tipo.label}</span>
-          </div>
-          <h3 className="font-semibold text-sm leading-tight" style={{ color: "#0F172A" }}>{f.razao_social}</h3>
-          {f.cnpj && <p className="text-xs mt-0.5 font-mono" style={{ color: "#94A3B8" }}>{f.cnpj}</p>}
-          {(f.cidade || f.uf) && (
-            <p className="flex items-center gap-1 text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-              <MapPin className="w-3 h-3" />{[f.cidade, f.uf].filter(Boolean).join(" · ")}
-            </p>
-          )}
-        </div>
-      </div>
-      <div className="rounded-lg p-3 space-y-1.5" style={{ backgroundColor: "#F8FAFC" }}>
-        {f.contato_nome && <p className="text-xs font-medium" style={{ color: "#334155" }}>{f.contato_nome}</p>}
-        <div className="flex flex-col gap-1">
-          {emailPrincipal && (
-            <a href={`mailto:${emailPrincipal}`} className="flex items-center gap-1.5 text-xs hover:underline truncate" style={{ color: "#2E60FF" }}>
-              <Mail className="w-3 h-3 flex-shrink-0" /><span className="truncate">{emailPrincipal}</span>
-            </a>
-          )}
-          {f.contato_whatsapp ? (
-            <a href={`https://wa.me/55${f.contato_whatsapp.replace(/\D/g, "")}`} target="_blank" className="flex items-center gap-1.5 text-xs hover:underline" style={{ color: "#059669" }}>
-              <MessageCircle className="w-3 h-3" />{formatWhatsApp(f.contato_whatsapp)}
-            </a>
-          ) : f.telefone ? (
-            <span className="flex items-center gap-1.5 text-xs" style={{ color: "#64748B" }}>
-              <Phone className="w-3 h-3" />{f.telefone}
-            </span>
-          ) : null}
-          {f.site && (
-            <a href={f.site.startsWith("http") ? f.site : `https://${f.site}`} target="_blank" className="flex items-center gap-1.5 text-xs hover:underline truncate" style={{ color: "#64748B" }}>
-              <Globe className="w-3 h-3 flex-shrink-0" /><span className="truncate">{f.site}</span>
-            </a>
-          )}
-        </div>
-      </div>
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#E2E8F0" }}>
+      <table className="w-full text-sm">
+        <thead>
+          <tr style={{ backgroundColor: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
+            <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide" style={{ color: "#94A3B8" }}>Nome / CNPJ</th>
+            <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide" style={{ color: "#94A3B8" }}>Localização</th>
+            <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide" style={{ color: "#94A3B8" }}>Contato</th>
+            <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide" style={{ color: "#94A3B8" }}>E-mail</th>
+            <th className="text-left px-4 py-2.5 font-medium text-xs uppercase tracking-wide" style={{ color: "#94A3B8" }}>Telefone / WhatsApp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {fornecedores.map((f, i) => {
+            const emailPrincipal = f.contato_email || f.email;
+            const telefonePrincipal = f.contato_whatsapp || f.telefone;
+            const isWhatsApp = !!f.contato_whatsapp;
+            return (
+              <tr
+                key={f.id}
+                style={{
+                  borderBottom: i < fornecedores.length - 1 ? "1px solid #F1F5F9" : undefined,
+                  backgroundColor: i % 2 === 0 ? "white" : "#FAFAFA",
+                }}
+              >
+                {/* Nome / CNPJ */}
+                <td className="px-4 py-3">
+                  <div className="font-medium" style={{ color: "#0F172A" }}>{f.razao_social}</div>
+                  {f.cnpj && (
+                    <div className="text-xs font-mono mt-0.5" style={{ color: "#94A3B8" }}>{f.cnpj}</div>
+                  )}
+                  {f.site && (
+                    <a
+                      href={f.site.startsWith("http") ? f.site : `https://${f.site}`}
+                      target="_blank"
+                      className="flex items-center gap-1 text-xs mt-0.5 hover:underline"
+                      style={{ color: "#64748B" }}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span className="truncate max-w-[160px]">{f.site.replace(/^https?:\/\//, "")}</span>
+                    </a>
+                  )}
+                </td>
+
+                {/* Localização */}
+                <td className="px-4 py-3">
+                  {(f.cidade || f.uf) ? (
+                    <div className="flex items-center gap-1 text-xs" style={{ color: "#64748B" }}>
+                      <MapPin className="w-3 h-3 flex-shrink-0" />
+                      {[f.cidade, f.uf].filter(Boolean).join(" · ")}
+                    </div>
+                  ) : (
+                    <span className="text-xs" style={{ color: "#CBD5E1" }}>—</span>
+                  )}
+                </td>
+
+                {/* Contato */}
+                <td className="px-4 py-3">
+                  {f.contato_nome ? (
+                    <span className="text-xs" style={{ color: "#334155" }}>{f.contato_nome}</span>
+                  ) : (
+                    <span className="text-xs" style={{ color: "#CBD5E1" }}>—</span>
+                  )}
+                </td>
+
+                {/* E-mail */}
+                <td className="px-4 py-3">
+                  {emailPrincipal ? (
+                    <a
+                      href={`mailto:${emailPrincipal}`}
+                      className="flex items-center gap-1 text-xs hover:underline"
+                      style={{ color: "#2E60FF" }}
+                    >
+                      <Mail className="w-3 h-3 flex-shrink-0" />
+                      <span className="truncate max-w-[200px]">{emailPrincipal}</span>
+                    </a>
+                  ) : (
+                    <span className="text-xs" style={{ color: "#CBD5E1" }}>—</span>
+                  )}
+                </td>
+
+                {/* Telefone / WhatsApp */}
+                <td className="px-4 py-3">
+                  {telefonePrincipal ? (
+                    isWhatsApp ? (
+                      <a
+                        href={`https://wa.me/55${f.contato_whatsapp!.replace(/\D/g, "")}`}
+                        target="_blank"
+                        className="flex items-center gap-1 text-xs hover:underline"
+                        style={{ color: "#059669" }}
+                      >
+                        <MessageCircle className="w-3 h-3" />
+                        {formatWhatsApp(telefonePrincipal)}
+                      </a>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs" style={{ color: "#64748B" }}>
+                        <Phone className="w-3 h-3" />
+                        {telefonePrincipal}
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-xs" style={{ color: "#CBD5E1" }}>—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
