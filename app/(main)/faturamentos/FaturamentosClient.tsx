@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, ChevronRight, Clock, FileText } from "lucide-react";
+import { Plus, FileSpreadsheet, ChevronRight, Clock, FileText } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { NovoFaturamentoModal } from "@/components/faturamentos/NovoFaturamentoModal";
+import { ImportarIClipsModal } from "@/components/faturamentos/ImportarIClipsModal";
 
 const statusLabel: Record<string, string> = {
   aguardando_inicio: "Aguardando Início",
@@ -58,6 +59,7 @@ function ProgressBar({ etapaAtual }: { etapaAtual: number }) {
 
 export function FaturamentosClient({ faturamentos }: { faturamentos: Faturamento[] }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const ativos = faturamentos.filter((f) => f.status !== "concluido" && f.status !== "cancelado");
   const concluidos = faturamentos.filter((f) => f.status === "concluido");
 
@@ -70,13 +72,23 @@ export function FaturamentosClient({ faturamentos }: { faturamentos: Faturamento
             {ativos.length} em andamento · {concluidos.length} concluídos
           </p>
         </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: "#2E60FF" }}
-        >
-          <Plus className="w-4 h-4" /> Novo Faturamento
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border transition-colors hover:bg-slate-50"
+            style={{ borderColor: "#E2E8F0", color: "#334155" }}
+          >
+            <FileSpreadsheet className="w-4 h-4" style={{ color: "#059669" }} />
+            Importar do iClips
+          </button>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ backgroundColor: "#2E60FF" }}
+          >
+            <Plus className="w-4 h-4" /> Novo Faturamento
+          </button>
+        </div>
       </div>
 
       {faturamentos.length === 0 ? (
@@ -137,6 +149,7 @@ export function FaturamentosClient({ faturamentos }: { faturamentos: Faturamento
       )}
 
       <NovoFaturamentoModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <ImportarIClipsModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }
