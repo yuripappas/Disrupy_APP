@@ -67,5 +67,5 @@ export default async function UsuariosPage() {
     return a.email.localeCompare(b.email);
   });
 
-  return <UsuariosClient initialUsers={users} />;
+  return <UsuariosClient initialUsers={users} currentUserId={user.id} />;
 }

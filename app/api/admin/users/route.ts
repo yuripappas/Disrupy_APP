@@ -79,6 +79,26 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true, userId: data.user.id });
 }
 
+// ── DELETE /api/admin/users — delete user ────────────────────────────────────
+export async function DELETE(req: NextRequest) {
+  const caller = await requireGestor();
+  if (!caller) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+
+  const { userId } = await req.json();
+  if (!userId) return NextResponse.json({ error: "userId é obrigatório" }, { status: 400 });
+
+  if (caller.id === userId) {
+    return NextResponse.json({ error: "Você não pode excluir sua própria conta" }, { status: 400 });
+  }
+
+  const admin = adminClient();
+  const { error } = await admin.auth.admin.deleteUser(userId);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ success: true });
+}
+
 // ── PATCH /api/admin/users — update role ─────────────────────────────────────
 export async function PATCH(req: NextRequest) {
   const caller = await requireGestor();

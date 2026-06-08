@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { UserPlus, Pencil, Mail, Clock, AlertTriangle } from "lucide-react";
+import { UserPlus, Pencil, Trash2, Mail, Clock, AlertTriangle } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { ConvidarUsuarioModal } from "./ConvidarUsuarioModal";
 import { EditarPerfilModal } from "./EditarPerfilModal";
+import { DeletarUsuarioModal } from "./DeletarUsuarioModal";
 
 const PERFIL_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   gestor:      { label: "Gestor",      color: "#00246D", bg: "#EEF2FF" },
@@ -24,10 +25,17 @@ type User = {
   created_at: string;
 };
 
-export function UsuariosClient({ initialUsers }: { initialUsers: User[] }) {
-  const [users, setUsers]         = useState<User[]>(initialUsers);
+export function UsuariosClient({
+  initialUsers,
+  currentUserId,
+}: {
+  initialUsers: User[];
+  currentUserId: string;
+}) {
+  const [users, setUsers]           = useState<User[]>(initialUsers);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [editando, setEditando]   = useState<User | null>(null);
+  const [editando, setEditando]     = useState<User | null>(null);
+  const [deletando, setDeletando]   = useState<User | null>(null);
 
   const reload = useCallback(async () => {
     const res = await fetch("/api/admin/users");
@@ -77,7 +85,8 @@ export function UsuariosClient({ initialUsers }: { initialUsers: User[] }) {
             </thead>
             <tbody>
               {users.map((u) => {
-                const perfil = PERFIL_CONFIG[u.role];
+                const perfil  = PERFIL_CONFIG[u.role];
+                const isSelf  = u.id === currentUserId;
                 return (
                   <tr key={u.id} style={{ borderBottom: "1px solid #F1F5F9" }}>
                     {/* Usuário */}
@@ -92,11 +101,21 @@ export function UsuariosClient({ initialUsers }: { initialUsers: User[] }) {
                         <div className="min-w-0">
                           {u.nome ? (
                             <>
-                              <p className="font-medium truncate" style={{ color: "#0F172A" }}>{u.nome}</p>
+                              <p className="font-medium truncate" style={{ color: "#0F172A" }}>
+                                {u.nome}
+                                {isSelf && (
+                                  <span className="ml-1.5 text-xs font-normal" style={{ color: "#94A3B8" }}>(você)</span>
+                                )}
+                              </p>
                               <p className="text-xs truncate" style={{ color: "#94A3B8" }}>{u.email}</p>
                             </>
                           ) : (
-                            <p className="font-medium truncate" style={{ color: "#0F172A" }}>{u.email}</p>
+                            <p className="font-medium truncate" style={{ color: "#0F172A" }}>
+                              {u.email}
+                              {isSelf && (
+                                <span className="ml-1.5 text-xs font-normal" style={{ color: "#94A3B8" }}>(você)</span>
+                              )}
+                            </p>
                           )}
                         </div>
                       </div>
@@ -139,14 +158,28 @@ export function UsuariosClient({ initialUsers }: { initialUsers: User[] }) {
                     </td>
 
                     {/* Ações */}
-                    <td className="px-5 py-3.5 text-right">
-                      <button
-                        onClick={() => setEditando(u)}
-                        className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
-                        title="Editar perfil"
-                      >
-                        <Pencil className="w-3.5 h-3.5" style={{ color: "#94A3B8" }} />
-                      </button>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setEditando(u)}
+                          className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                          title="Editar perfil"
+                        >
+                          <Pencil className="w-3.5 h-3.5" style={{ color: "#94A3B8" }} />
+                        </button>
+                        {!isSelf && (
+                          <button
+                            onClick={() => setDeletando(u)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                            title="Excluir usuário"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" style={{ color: "#CBD5E1" }}
+                              onMouseEnter={(e) => (e.currentTarget.style.color = "#DC2626")}
+                              onMouseLeave={(e) => (e.currentTarget.style.color = "#CBD5E1")}
+                            />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -169,6 +202,15 @@ export function UsuariosClient({ initialUsers }: { initialUsers: User[] }) {
           user={editando}
           onClose={() => setEditando(null)}
           onSaved={() => { setEditando(null); reload(); }}
+        />
+      )}
+
+      {deletando && (
+        <DeletarUsuarioModal
+          key={deletando.id}
+          user={deletando}
+          onClose={() => setDeletando(null)}
+          onDeleted={() => { setDeletando(null); reload(); }}
         />
       )}
     </>
