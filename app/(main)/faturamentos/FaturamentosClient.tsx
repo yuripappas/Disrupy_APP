@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, FileSpreadsheet, ChevronRight, Clock, FileText } from "lucide-react";
+import { Plus, FileSpreadsheet, ChevronRight, Clock, FileText, Trash2 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { NovoFaturamentoModal } from "@/components/faturamentos/NovoFaturamentoModal";
 import { ImportarIClipsModal } from "@/components/faturamentos/ImportarIClipsModal";
+import { DeletarFaturamentoModal } from "@/components/faturamentos/DeletarFaturamentoModal";
 
 const statusLabel: Record<string, string> = {
   aguardando_inicio: "Aguardando Início",
@@ -57,9 +58,12 @@ function ProgressBar({ etapaAtual }: { etapaAtual: number }) {
   );
 }
 
-export function FaturamentosClient({ faturamentos }: { faturamentos: Faturamento[] }) {
+type DeleteTarget = { id: string; nome_campanha: string };
+
+export function FaturamentosClient({ faturamentos, isGestor }: { faturamentos: Faturamento[]; isGestor: boolean }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const ativos = faturamentos.filter((f) => f.status !== "concluido" && f.status !== "cancelado");
   const concluidos = faturamentos.filter((f) => f.status === "concluido");
 
@@ -137,8 +141,26 @@ export function FaturamentosClient({ faturamentos }: { faturamentos: Faturamento
                     </div>
                     <p className="text-xl font-bold" style={{ color: "#0F172A" }}>{formatCurrency(fat.valor_total)}</p>
                     <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>Atualizado {formatDate(fat.updated_at)}</p>
-                    <div className="mt-3 flex items-center justify-end gap-1 text-xs font-medium" style={{ color: "#2E60FF" }}>
-                      Ver detalhes <ChevronRight className="w-3 h-3" />
+                    <div className="mt-3 flex items-center justify-end gap-3">
+                      <span className="flex items-center gap-1 text-xs font-medium" style={{ color: "#2E60FF" }}>
+                        Ver detalhes <ChevronRight className="w-3 h-3" />
+                      </span>
+                      {isGestor && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDeleteTarget({ id: fat.id, nome_campanha: fat.nome_campanha });
+                          }}
+                          title="Excluir faturamento"
+                          className="p-1 rounded-md hover:bg-red-50 transition-colors"
+                          style={{ color: "#CBD5E1" }}
+                          onMouseEnter={(e) => (e.currentTarget.style.color = "#DC2626")}
+                          onMouseLeave={(e) => (e.currentTarget.style.color = "#CBD5E1")}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -150,6 +172,12 @@ export function FaturamentosClient({ faturamentos }: { faturamentos: Faturamento
 
       <NovoFaturamentoModal open={modalOpen} onClose={() => setModalOpen(false)} />
       <ImportarIClipsModal open={importOpen} onClose={() => setImportOpen(false)} />
+      {deleteTarget && (
+        <DeletarFaturamentoModal
+          faturamento={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }
