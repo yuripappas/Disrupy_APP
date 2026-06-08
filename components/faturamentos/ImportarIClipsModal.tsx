@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Upload, FileSpreadsheet, AlertTriangle, CheckCircle2,
-  ChevronDown, ChevronRight, Loader2, X,
+  ChevronDown, ChevronRight, Loader2, X, Search, UserPlus, Link2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
@@ -13,22 +13,21 @@ import {
   type IClipsProposta, type OrcamentoGrupo, type MidiaGrupo,
 } from "@/lib/iclips/parser";
 
-// ── Document templates ────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const DOCS_MIDIA = [
-  { tipo: "nf",          label: "Nota Fiscal" },
-  { tipo: "pi",          label: "PI – Pedido de Inserção" },
+  { tipo: "nf", label: "Nota Fiscal" },
+  { tipo: "pi", label: "PI – Pedido de Inserção" },
   { tipo: "comprovacao", label: "Comprovação de Veiculação" },
   { tipo: "tabela_orcamento", label: "Tabela de Preços / Orçamento" },
 ];
 const DOCS_PRODUCAO = [
-  { tipo: "nf",          label: "Nota Fiscal" },
-  { tipo: "evidencia",   label: "Evidência de Produção" },
+  { tipo: "nf", label: "Nota Fiscal" },
+  { tipo: "evidencia", label: "Evidência de Produção" },
   { tipo: "orcamento_1", label: "Orçamento 1" },
   { tipo: "orcamento_2", label: "Orçamento 2" },
   { tipo: "orcamento_3", label: "Orçamento 3" },
 ];
-
 const ETAPAS_NOMES = [
   "Iniciar Faturamento", "Documentação Fornecedores", "Revisão de Documentação",
   "Documentação Agência", "Revisão do Processo", "Publicação",
@@ -41,11 +40,13 @@ type DbCliente    = { id: string; nome: string; tipo: string };
 type DbFornecedor = { id: string; razao_social: string; tipo: string };
 
 type MatchedFornecedor = (OrcamentoGrupo | MidiaGrupo) & {
-  fornecedor_id: string | null;   // null = não encontrado
+  fornecedor_id: string | null;
   kind: "orcamento" | "midia";
   honorarios_editavel: number;
   valor_total_editavel: number;
 };
+
+type Resolucao = { modo: "associar" | "criando"; busca: string; loading: boolean };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -53,10 +54,14 @@ function matchName(target: string, candidates: DbFornecedor[]): DbFornecedor | n
   const t = normalizeName(target);
   return candidates.find((c) => normalizeName(c.razao_social) === t) ?? null;
 }
-
 function matchCliente(nome: string, clientes: DbCliente[]): DbCliente | null {
   const t = normalizeName(nome);
   return clientes.find((c) => normalizeName(c.nome) === t) ?? null;
+}
+function getNome(f: MatchedFornecedor): string {
+  return "nome_fornecedor" in f
+    ? (f as OrcamentoGrupo).nome_fornecedor
+    : (f as MidiaGrupo).nome_veiculo;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -89,13 +94,116 @@ function Section({
   );
 }
 
-function AlertaBloqueio({ text }: { text: string }) {
-  return (
-    <div className="flex items-start gap-2 px-4 py-2.5 text-xs" style={{ backgroundColor: "#FFFBEB", borderBottom: "1px solid #FEF3C7" }}>
-      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#D97706" }} />
-      <span style={{ color: "#92400E" }}>{text}</span>
-    </div>
-  );
+// ── Inline resolution for unmatched suppliers ─────────────────────────────────
+
+function ResolucaoInline({
+  dbFornecedores, resolucao,
+  onIniciarAssociar, onAssociar, onCriar, onCancelar, onBuscaChange,
+}: {
+  dbFornecedores: DbFornecedor[];
+  resolucao: Resolucao | undefined;
+  onIniciarAssociar: () => void;
+  onAssociar: (f: DbFornecedor) => void;
+  onCriar: () => void;
+  onCancelar: () => void;
+  onBuscaChange: (v: string) => void;
+}) {
+  if (!resolucao) {
+    // Default: show action buttons
+    return (
+      <div className="px-4 pb-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onIniciarAssociar}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-blue-50"
+          style={{ borderColor: "#BFDBFE", color: "#1D4ED8", backgroundColor: "#EFF6FF" }}
+        >
+          <Link2 className="w-3 h-3" /> Associar a existente
+        </button>
+        <button
+          type="button"
+          onClick={onCriar}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-green-50"
+          style={{ borderColor: "#BBF7D0", color: "#15803D", backgroundColor: "#F0FDF4" }}
+        >
+          <UserPlus className="w-3 h-3" /> Criar no cadastro
+        </button>
+        <span className="text-xs" style={{ color: "#94A3B8" }}>
+          ou ignore — adicione manualmente após criar
+        </span>
+      </div>
+    );
+  }
+
+  if (resolucao.loading) {
+    return (
+      <div className="px-4 pb-3 flex items-center gap-2 text-xs" style={{ color: "#64748B" }}>
+        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Criando fornecedor...
+      </div>
+    );
+  }
+
+  if (resolucao.modo === "associar") {
+    const filtrados = dbFornecedores.filter((f) =>
+      !resolucao.busca ||
+      normalizeName(f.razao_social).includes(normalizeName(resolucao.busca))
+    );
+    return (
+      <div className="px-4 pb-3 space-y-1.5">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3" style={{ color: "#94A3B8" }} />
+          <input
+            autoFocus
+            type="text"
+            value={resolucao.busca}
+            onChange={(e) => onBuscaChange(e.target.value)}
+            placeholder="Buscar fornecedor no cadastro..."
+            className="w-full pl-7 pr-3 py-1.5 text-xs rounded-lg border outline-none"
+            style={{ borderColor: "#2E60FF", color: "#334155" }}
+          />
+        </div>
+        <div
+          className="border rounded-lg overflow-y-auto"
+          style={{ borderColor: "#E2E8F0", maxHeight: "160px" }}
+        >
+          {filtrados.length === 0 ? (
+            <p className="px-3 py-2 text-xs" style={{ color: "#94A3B8" }}>Nenhum resultado</p>
+          ) : (
+            filtrados.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => onAssociar(f)}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 transition-colors flex items-center justify-between"
+                style={{ borderBottom: "1px solid #F1F5F9" }}
+              >
+                <span className="font-medium" style={{ color: "#0F172A" }}>{f.razao_social}</span>
+                <span
+                  className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 ml-2"
+                  style={{
+                    backgroundColor: f.tipo === "midia" ? "#EEF2FF" : "#F5F3FF",
+                    color: f.tipo === "midia" ? "#00246D" : "#7C3AED",
+                  }}
+                >
+                  {f.tipo === "midia" ? "Mídia" : "Produção"}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onCancelar}
+          className="text-xs"
+          style={{ color: "#94A3B8" }}
+        >
+          Cancelar
+        </button>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -104,36 +212,35 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Steps: 0=upload, 1=preview, 2=creating
   const [step, setStep] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [parseError, setParseError] = useState("");
 
-  // Parsed data
   const [proposta, setProposta] = useState<IClipsProposta | null>(null);
-
-  // DB data for matching
   const [clienteMatch, setClienteMatch] = useState<DbCliente | null | "loading">("loading");
   const [fornecedoresMatch, setFornecedoresMatch] = useState<MatchedFornecedor[]>([]);
+  const [dbFornecedores, setDbFornecedores] = useState<DbFornecedor[]>([]);
+  const [resolucoes, setResolucoes] = useState<Record<number, Resolucao>>({});
 
-  // Per-faturamento fields
   const [prazo, setPrazo] = useState("5");
   const [secretaria, setSecretaria] = useState("");
   const [empenho, setEmpenho] = useState("");
-
-  // Creating state
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
 
   function resetAndClose() {
     setStep(0);
-    setFileName("");
     setParseError("");
     setProposta(null);
     setClienteMatch("loading");
     setFornecedoresMatch([]);
+    setDbFornecedores([]);
+    setResolucoes({});
     setCreating(false);
     setCreateError("");
+    setPrazo("5");
+    setSecretaria("");
+    setEmpenho("");
     onClose();
   }
 
@@ -145,48 +252,30 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
       return;
     }
     setParseError("");
-
     try {
       const buffer = await file.arrayBuffer();
       const parsed = parseIClipsXlsx(buffer);
       setProposta(parsed);
 
-      // Load DB data for matching
       const supabase = createClient();
       const [{ data: clientes }, { data: fornecedores }] = await Promise.all([
         supabase.from("clientes").select("id, nome, tipo").eq("ativo", true),
         supabase.from("fornecedores").select("id, razao_social, tipo").eq("ativo", true),
       ]);
 
-      const dbClientes    = (clientes    ?? []) as DbCliente[];
-      const dbFornecedores = (fornecedores ?? []) as DbFornecedor[];
+      const dbCli = (clientes ?? []) as DbCliente[];
+      const dbForn = (fornecedores ?? []) as DbFornecedor[];
+      setDbFornecedores(dbForn);
 
-      // Match cliente
-      const cm = matchCliente(parsed.dados_gerais.cliente_nome, dbClientes);
-      setClienteMatch(cm);
+      setClienteMatch(matchCliente(parsed.dados_gerais.cliente_nome, dbCli));
 
-      // Match orcamentos
       const orcMatched: MatchedFornecedor[] = parsed.orcamentos.map((orc) => {
-        const match = matchName(orc.nome_fornecedor, dbFornecedores);
-        return {
-          ...orc,
-          kind: "orcamento",
-          fornecedor_id: match?.id ?? null,
-          honorarios_editavel: orc.honorarios,
-          valor_total_editavel: orc.valor_total,
-        };
+        const m = matchName(orc.nome_fornecedor, dbForn);
+        return { ...orc, kind: "orcamento", fornecedor_id: m?.id ?? null, honorarios_editavel: orc.honorarios, valor_total_editavel: orc.valor_total };
       });
-
-      // Match mídias
       const midMatched: MatchedFornecedor[] = parsed.midias.map((mid) => {
-        const match = matchName((mid as MidiaGrupo).nome_veiculo, dbFornecedores);
-        return {
-          ...mid,
-          kind: "midia",
-          fornecedor_id: match?.id ?? null,
-          honorarios_editavel: mid.honorarios,
-          valor_total_editavel: mid.valor_total,
-        };
+        const m = matchName((mid as MidiaGrupo).nome_veiculo, dbForn);
+        return { ...mid, kind: "midia", fornecedor_id: m?.id ?? null, honorarios_editavel: mid.honorarios, valor_total_editavel: mid.valor_total };
       });
 
       setFornecedoresMatch([...orcMatched, ...midMatched]);
@@ -207,10 +296,54 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
 
   function updateHonorarios(idx: number, raw: string) {
     const hon = parseFloat(raw.replace(",", ".")) || 0;
-    setFornecedoresMatch((prev) => prev.map((f, i) => {
-      if (i !== idx) return f;
-      return { ...f, honorarios_editavel: hon, valor_total_editavel: Math.round((f.valor + hon) * 100) / 100 };
-    }));
+    setFornecedoresMatch((prev) => prev.map((f, i) =>
+      i !== idx ? f : { ...f, honorarios_editavel: hon, valor_total_editavel: Math.round((f.valor + hon) * 100) / 100 }
+    ));
+  }
+
+  // ── Resolução de não encontrados ───────────────────────────────────────────
+
+  function iniciarAssociar(idx: number) {
+    setResolucoes((prev) => ({ ...prev, [idx]: { modo: "associar", busca: "", loading: false } }));
+  }
+
+  function cancelarResolucao(idx: number) {
+    setResolucoes((prev) => { const n = { ...prev }; delete n[idx]; return n; });
+  }
+
+  function setBusca(idx: number, busca: string) {
+    setResolucoes((prev) => ({ ...prev, [idx]: { ...prev[idx], busca } }));
+  }
+
+  function handleAssociar(idx: number, fornecedor: DbFornecedor) {
+    setFornecedoresMatch((prev) => prev.map((f, i) => i === idx ? { ...f, fornecedor_id: fornecedor.id } : f));
+    cancelarResolucao(idx);
+  }
+
+  async function handleCriarNovo(idx: number) {
+    const f = fornecedoresMatch[idx];
+    if (!f) return;
+    const nome = getNome(f);
+    const tipo = f.kind === "midia" ? "midia" : "producao";
+
+    setResolucoes((prev) => ({ ...prev, [idx]: { modo: "criando", busca: "", loading: true } }));
+
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("fornecedores")
+      .insert({ razao_social: nome.toUpperCase(), tipo, ativo: true })
+      .select()
+      .single();
+
+    if (error || !data) {
+      cancelarResolucao(idx);
+      return;
+    }
+
+    const novoForn = data as DbFornecedor;
+    setDbFornecedores((prev) => [...prev, novoForn]);
+    setFornecedoresMatch((prev) => prev.map((f2, i) => i === idx ? { ...f2, fornecedor_id: novoForn.id } : f2));
+    cancelarResolucao(idx);
   }
 
   // ── Create faturamento ─────────────────────────────────────────────────────
@@ -222,41 +355,34 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
     setStep(2);
 
     const supabase = createClient();
-
-    // 1. Faturamento
-    const totalFornecedores = fornecedoresMatch
-      .filter((f) => f.fornecedor_id)
-      .reduce((s, f) => s + f.valor_total_editavel, 0);
-    const totalCustosInternos = proposta.custos_internos
-      .reduce((s, c) => s + c.valor_total, 0);
+    const totalForn = fornecedoresMatch.filter((f) => f.fornecedor_id).reduce((s, f) => s + f.valor_total_editavel, 0);
+    const totalCI   = proposta.custos_internos.reduce((s, c) => s + c.valor_total, 0);
 
     const { data: fat, error: fatErr } = await supabase
       .from("faturamentos")
       .insert({
-        nome_campanha:    proposta.dados_gerais.nome_campanha,
-        iclips_job_id:    `#${proposta.dados_gerais.job_id}`,
+        nome_campanha:      proposta.dados_gerais.nome_campanha,
+        iclips_job_id:      `#${proposta.dados_gerais.job_id}`,
         iclips_proposta_id: proposta.dados_gerais.proposta_id,
-        cliente_id:       clienteMatch.id,
-        cliente_nome:     clienteMatch.nome,
-        cliente_tipo:     clienteMatch.tipo,
-        secretaria:       secretaria || null,
-        empenho:          empenho || null,
-        valor_total:      Math.round((totalFornecedores + totalCustosInternos) * 100) / 100,
-        prazo_dias_uteis: parseInt(prazo) || 5,
-        status:           "aguardando_inicio",
-        etapa_atual:      1,
+        cliente_id:         clienteMatch.id,
+        cliente_nome:       clienteMatch.nome,
+        cliente_tipo:       clienteMatch.tipo,
+        secretaria:         secretaria || null,
+        empenho:            empenho || null,
+        valor_total:        Math.round((totalForn + totalCI) * 100) / 100,
+        prazo_dias_uteis:   parseInt(prazo) || 5,
+        status:             "aguardando_inicio",
+        etapa_atual:        1,
       })
-      .select()
-      .single();
+      .select().single();
 
     if (fatErr || !fat) {
-      setCreateError("Erro ao criar faturamento. Tente novamente.");
+      setCreateError("Erro ao criar faturamento.");
       setCreating(false);
       setStep(1);
       return;
     }
 
-    // 2. Etapas
     await supabase.from("faturamento_etapas").insert(
       ETAPAS_NOMES.map((nome, i) => ({
         faturamento_id: fat.id, numero: i + 1, nome,
@@ -265,46 +391,26 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
       }))
     );
 
-    // 3. Custos internos
     if (proposta.custos_internos.length > 0) {
       await supabase.from("faturamento_custos_internos").insert(
         proposta.custos_internos.map((ci) => ({
-          faturamento_id: fat.id,
-          codigo:         ci.codigo,
-          servico:        ci.servico || ci.descricao,
-          qtde:           ci.qtde,
-          valor_unitario: ci.valor_unitario,
-          valor_total:    ci.valor_total,
+          faturamento_id: fat.id, codigo: ci.codigo,
+          servico: ci.servico || ci.descricao, qtde: ci.qtde,
+          valor_unitario: ci.valor_unitario, valor_total: ci.valor_total,
         }))
       );
     }
 
-    // 4. Fornecedores (apenas os que tiveram match)
-    const matched = fornecedoresMatch.filter((f) => f.fornecedor_id);
-    for (const f of matched) {
-      const { data: ff } = await supabase
-        .from("faturamento_fornecedores")
-        .insert({
-          faturamento_id: fat.id,
-          fornecedor_id:  f.fornecedor_id,
-          valor:          f.valor,
-          honorarios:     f.honorarios_editavel,
-          valor_total:    f.valor_total_editavel,
-          prazo_dias:     parseInt(prazo) || 5,
-          status:         "aguardando",
-        })
-        .select()
-        .single();
-
+    for (const f of fornecedoresMatch.filter((f) => f.fornecedor_id)) {
+      const { data: ff } = await supabase.from("faturamento_fornecedores").insert({
+        faturamento_id: fat.id, fornecedor_id: f.fornecedor_id,
+        valor: f.valor, honorarios: f.honorarios_editavel, valor_total: f.valor_total_editavel,
+        prazo_dias: parseInt(prazo) || 5, status: "aguardando",
+      }).select().single();
       if (!ff) continue;
-
-      // Documentos por tipo
       const docs = f.kind === "midia" ? DOCS_MIDIA : DOCS_PRODUCAO;
       await supabase.from("documentos").insert(
-        docs.map((d) => ({
-          faturamento_fornecedor_id: ff.id,
-          tipo: d.tipo, label: d.label, status: "pendente",
-        }))
+        docs.map((d) => ({ faturamento_fornecedor_id: ff.id, tipo: d.tipo, label: d.label, status: "pendente" }))
       );
     }
 
@@ -313,25 +419,21 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
     resetAndClose();
   }
 
-  // ── Derived data for preview ───────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────────────────
 
-  const orcamentosMatched = fornecedoresMatch.filter((f) => f.kind === "orcamento");
-  const midiasMatched     = fornecedoresMatch.filter((f) => f.kind === "midia");
-  const naoEncontrados    = fornecedoresMatch.filter((f) => !f.fornecedor_id);
-  const totalOrc          = orcamentosMatched.reduce((s, f) => s + f.valor_total_editavel, 0);
-  const totalMid          = midiasMatched.reduce((s, f) => s + f.valor_total_editavel, 0);
-  const totalCI           = proposta?.custos_internos.reduce((s, c) => s + c.valor_total, 0) ?? 0;
+  const orcamentosMatch = fornecedoresMatch.filter((f) => f.kind === "orcamento");
+  const midiasMatch     = fornecedoresMatch.filter((f) => f.kind === "midia");
+  const naoResolvidos   = fornecedoresMatch.filter((f) => !f.fornecedor_id);
+  const totalOrc        = orcamentosMatch.reduce((s, f) => s + f.valor_total_editavel, 0);
+  const totalMid        = midiasMatch.reduce((s, f) => s + f.valor_total_editavel, 0);
+  const totalCI         = proposta?.custos_internos.reduce((s, c) => s + c.valor_total, 0) ?? 0;
 
   if (!open) return null;
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-      <div
-        className="bg-white rounded-2xl shadow-2xl flex flex-col"
-        style={{ width: "100%", maxWidth: "720px", maxHeight: "90vh" }}
-      >
+      <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: "100%", maxWidth: "720px", maxHeight: "90vh" }}>
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#E2E8F0" }}>
           <div>
@@ -358,42 +460,22 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
                 onDrop={onDrop}
                 onClick={() => inputRef.current?.click()}
                 className="border-2 border-dashed rounded-xl flex flex-col items-center justify-center py-16 cursor-pointer transition-colors"
-                style={{
-                  borderColor: dragging ? "#2E60FF" : "#CBD5E1",
-                  backgroundColor: dragging ? "#EEF2FF" : "#F8FAFC",
-                }}
+                style={{ borderColor: dragging ? "#2E60FF" : "#CBD5E1", backgroundColor: dragging ? "#EEF2FF" : "#F8FAFC" }}
               >
                 <FileSpreadsheet className="w-12 h-12 mb-3" style={{ color: dragging ? "#2E60FF" : "#94A3B8" }} />
                 <p className="text-sm font-semibold mb-1" style={{ color: "#334155" }}>
                   Arraste o arquivo ou clique para selecionar
                 </p>
-                <p className="text-xs" style={{ color: "#94A3B8" }}>
-                  Arquivo .xlsx exportado do iClips (Proposta)
-                </p>
-                <input
-                  ref={inputRef}
-                  type="file"
-                  accept=".xlsx"
-                  className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); }}
-                />
+                <p className="text-xs" style={{ color: "#94A3B8" }}>Arquivo .xlsx exportado do iClips (Proposta)</p>
+                <input ref={inputRef} type="file" accept=".xlsx" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); }} />
               </div>
-
               {parseError && (
                 <div className="mt-4 flex items-start gap-2 p-3 rounded-lg" style={{ backgroundColor: "#FEF2F2" }}>
                   <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: "#EF4444" }} />
                   <p className="text-sm" style={{ color: "#991B1B" }}>{parseError}</p>
                 </div>
               )}
-
-              <div className="mt-6 p-4 rounded-xl" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                <p className="text-xs font-semibold mb-2" style={{ color: "#64748B" }}>Como exportar do iClips:</p>
-                <ol className="text-xs space-y-1" style={{ color: "#94A3B8" }}>
-                  <li>1. Acesse o job no iClips e abra a Proposta aprovada</li>
-                  <li>2. Clique em <strong>Exportar → Excel (.xlsx)</strong></li>
-                  <li>3. Faça o upload do arquivo aqui</li>
-                </ol>
-              </div>
             </div>
           )}
 
@@ -401,18 +483,14 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
           {step === 1 && proposta && (
             <div className="p-6 space-y-4">
 
-              {/* Faturamento info */}
+              {/* Header card */}
               <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: "#E2E8F0" }}>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-mono mb-1" style={{ color: "#94A3B8" }}>
                       #{proposta.dados_gerais.job_id} · Proposta {proposta.dados_gerais.proposta_id}
                     </p>
-                    <p className="text-base font-bold" style={{ color: "#0F172A" }}>
-                      {proposta.dados_gerais.nome_campanha}
-                    </p>
-
-                    {/* Cliente status */}
+                    <p className="text-base font-bold" style={{ color: "#0F172A" }}>{proposta.dados_gerais.nome_campanha}</p>
                     {clienteMatch && clienteMatch !== "loading" ? (
                       <div className="flex items-center gap-1.5 mt-1">
                         <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "#059669" }} />
@@ -427,93 +505,48 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
                       </div>
                     )}
                   </div>
-
-                  {/* Summary totals */}
                   <div className="text-right flex-shrink-0">
-                    <p className="text-xl font-bold" style={{ color: "#0F172A" }}>
-                      {formatCurrency(totalCI + totalOrc + totalMid)}
-                    </p>
+                    <p className="text-xl font-bold" style={{ color: "#0F172A" }}>{formatCurrency(totalCI + totalOrc + totalMid)}</p>
                     <p className="text-xs" style={{ color: "#94A3B8" }}>total estimado</p>
                   </div>
                 </div>
 
-                {/* Campos editáveis do faturamento */}
+                {/* Summary: resolved status */}
+                {naoResolvidos.length > 0 && (
+                  <div className="flex items-center gap-2 pt-2 border-t text-xs" style={{ borderColor: "#F1F5F9" }}>
+                    <AlertTriangle className="w-3.5 h-3.5" style={{ color: "#D97706" }} />
+                    <span style={{ color: "#92400E" }}>
+                      <strong>{naoResolvidos.length}</strong> fornecedor(es) ainda não vinculado(s) — resolva abaixo ou serão ignorados
+                    </span>
+                  </div>
+                )}
+                {naoResolvidos.length === 0 && fornecedoresMatch.length > 0 && (
+                  <div className="flex items-center gap-2 pt-2 border-t text-xs" style={{ borderColor: "#F1F5F9" }}>
+                    <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "#059669" }} />
+                    <span style={{ color: "#059669" }}>Todos os fornecedores vinculados</span>
+                  </div>
+                )}
+
+                {/* Editable fields */}
                 <div className="grid grid-cols-3 gap-3 pt-2 border-t" style={{ borderColor: "#F1F5F9" }}>
-                  <div>
-                    <label className="text-xs font-medium block mb-1" style={{ color: "#64748B" }}>Empenho</label>
-                    <input
-                      type="text"
-                      value={empenho}
-                      onChange={(e) => setEmpenho(e.target.value)}
-                      placeholder="2026NE00913"
-                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none"
-                      style={{ borderColor: "#E2E8F0", color: "#334155" }}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium block mb-1" style={{ color: "#64748B" }}>Secretaria / Emissor</label>
-                    <input
-                      type="text"
-                      value={secretaria}
-                      onChange={(e) => setSecretaria(e.target.value)}
-                      placeholder="DETRAN ALAGOAS"
-                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none"
-                      style={{ borderColor: "#E2E8F0", color: "#334155" }}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium block mb-1" style={{ color: "#64748B" }}>Prazo (dias úteis)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="30"
-                      value={prazo}
-                      onChange={(e) => setPrazo(e.target.value)}
-                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none"
-                      style={{ borderColor: "#E2E8F0", color: "#334155" }}
-                    />
-                  </div>
+                  {[
+                    { label: "Empenho", value: empenho, set: setEmpenho, placeholder: "2026NE00913" },
+                    { label: "Secretaria / Emissor", value: secretaria, set: setSecretaria, placeholder: "DETRAN ALAGOAS" },
+                    { label: "Prazo (dias úteis)", value: prazo, set: setPrazo, placeholder: "5", type: "number" },
+                  ].map(({ label, value, set, placeholder, type }) => (
+                    <div key={label}>
+                      <label className="text-xs font-medium block mb-1" style={{ color: "#64748B" }}>{label}</label>
+                      <input type={type ?? "text"} value={value} onChange={(e) => set(e.target.value)}
+                        placeholder={placeholder}
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none"
+                        style={{ borderColor: "#E2E8F0", color: "#334155" }} />
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* Alertas de não encontrados */}
-              {naoEncontrados.length > 0 && (
-                <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#FEF3C7" }}>
-                  <div className="flex items-center gap-2 px-4 py-3" style={{ backgroundColor: "#FFFBEB" }}>
-                    <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: "#D97706" }} />
-                    <p className="text-sm font-semibold" style={{ color: "#92400E" }}>
-                      {naoEncontrados.length} fornecedor(es) não encontrado(s) no cadastro
-                    </p>
-                  </div>
-                  <div className="divide-y" style={{ borderColor: "#FEF3C7" }}>
-                    {naoEncontrados.map((f, i) => (
-                      <div key={i} className="flex items-center justify-between px-4 py-2.5" style={{ backgroundColor: "#FFFBEB" }}>
-                        <div>
-                          <p className="text-xs font-medium" style={{ color: "#92400E" }}>
-                            {"nome_fornecedor" in f ? f.nome_fornecedor : (f as MidiaGrupo).nome_veiculo}
-                          </p>
-                          <p className="text-xs" style={{ color: "#D97706" }}>
-                            {f.kind === "midia" ? "Veículo de Mídia" : "Produção"} · não será criado automaticamente
-                          </p>
-                        </div>
-                        <span className="text-xs font-semibold" style={{ color: "#92400E" }}>
-                          {formatCurrency(f.valor_total_editavel)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="px-4 py-2.5 text-xs" style={{ backgroundColor: "#FEF9EE", color: "#92400E" }}>
-                    Adicione esses fornecedores no cadastro e depois adicione-os manualmente ao faturamento.
-                  </div>
-                </div>
-              )}
-
               {/* Custos Internos */}
-              <Section
-                title="Custos Internos da Agência"
-                count={proposta.custos_internos.length}
-                total={totalCI}
-              >
+              <Section title="Custos Internos da Agência" count={proposta.custos_internos.length} total={totalCI}>
                 <table className="w-full text-xs">
                   <thead>
                     <tr style={{ backgroundColor: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
@@ -530,114 +563,110 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
                           <p className="text-xs" style={{ color: "#94A3B8" }}>{ci.servico.substring(0, 80)}</p>
                         </td>
                         <td className="px-4 py-2 text-right" style={{ color: "#64748B" }}>{ci.qtde}</td>
-                        <td className="px-4 py-2 text-right font-semibold" style={{ color: "#0F172A" }}>
-                          {formatCurrency(ci.valor_total)}
-                        </td>
+                        <td className="px-4 py-2 text-right font-semibold" style={{ color: "#0F172A" }}>{formatCurrency(ci.valor_total)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </Section>
 
-              {/* Orçamentos (Produção) */}
-              {orcamentosMatched.length > 0 && (
-                <Section title="Fornecedores de Produção" count={orcamentosMatched.length} total={totalOrc}>
-                  {orcamentosMatched.map((f, i) => {
-                    const globalIdx = fornecedoresMatch.indexOf(f);
-                    const nome = "nome_fornecedor" in f ? f.nome_fornecedor : "";
+              {/* Fornecedores de Produção */}
+              {orcamentosMatch.length > 0 && (
+                <Section title="Fornecedores de Produção" count={orcamentosMatch.length} total={totalOrc}>
+                  {orcamentosMatch.map((f) => {
+                    const idx = fornecedoresMatch.indexOf(f);
+                    const nome = getNome(f);
                     return (
-                      <div key={i} style={{ borderBottom: "1px solid #F1F5F9" }}>
-                        {!f.fornecedor_id && (
-                          <AlertaBloqueio text={`"${nome}" não encontrado — será ignorado`} />
-                        )}
+                      <div key={idx} style={{ borderBottom: "1px solid #F1F5F9" }}>
                         <div className="px-4 py-3 flex items-start gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               {f.fornecedor_id
                                 ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#059669" }} />
-                                : <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#D97706" }} />
-                              }
+                                : <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#D97706" }} />}
                               <p className="text-sm font-semibold truncate" style={{ color: "#0F172A" }}>{nome}</p>
                             </div>
                             <p className="text-xs" style={{ color: "#94A3B8" }}>
-                              {("itens" in f ? f.itens : []).slice(0, 2).join(" · ")}
-                              {("itens" in f ? f.itens : []).length > 2 && ` +${("itens" in f ? f.itens : []).length - 2} itens`}
+                              {("itens" in f ? (f as OrcamentoGrupo).itens : []).slice(0, 2).join(" · ")}
+                              {("itens" in f ? (f as OrcamentoGrupo).itens : []).length > 2 && ` +${("itens" in f ? (f as OrcamentoGrupo).itens : []).length - 2}`}
                             </p>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="text-sm font-bold" style={{ color: "#0F172A" }}>
-                              {formatCurrency(f.valor_total_editavel)}
-                            </p>
+                            <p className="text-sm font-bold" style={{ color: "#0F172A" }}>{formatCurrency(f.valor_total_editavel)}</p>
                             <div className="flex items-center gap-1 mt-1 justify-end">
                               <span className="text-xs" style={{ color: "#94A3B8" }}>hon.</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={f.honorarios_editavel}
-                                onChange={(e) => updateHonorarios(globalIdx, e.target.value)}
+                              <input type="number" step="0.01" value={f.honorarios_editavel}
+                                onChange={(e) => updateHonorarios(idx, e.target.value)}
                                 className="text-xs text-right rounded border px-1.5 py-0.5 w-24 outline-none"
-                                style={{ borderColor: "#E2E8F0", color: "#334155" }}
-                              />
+                                style={{ borderColor: "#E2E8F0", color: "#334155" }} />
                             </div>
                           </div>
                         </div>
+                        {!f.fornecedor_id && (
+                          <ResolucaoInline
+                            dbFornecedores={dbFornecedores}
+                            resolucao={resolucoes[idx]}
+                            onIniciarAssociar={() => iniciarAssociar(idx)}
+                            onAssociar={(forn) => handleAssociar(idx, forn)}
+                            onCriar={() => handleCriarNovo(idx)}
+                            onCancelar={() => cancelarResolucao(idx)}
+                            onBuscaChange={(v) => setBusca(idx, v)}
+                          />
+                        )}
                       </div>
                     );
                   })}
                 </Section>
               )}
 
-              {/* Mídias */}
-              {midiasMatched.length > 0 && (
-                <Section title="Veículos de Mídia" count={midiasMatched.length} total={totalMid}>
-                  {midiasMatched.map((f, i) => {
-                    const globalIdx = fornecedoresMatch.indexOf(f);
-                    const nome = "nome_veiculo" in f ? (f as MidiaGrupo).nome_veiculo : "";
+              {/* Veículos de Mídia */}
+              {midiasMatch.length > 0 && (
+                <Section title="Veículos de Mídia" count={midiasMatch.length} total={totalMid}>
+                  {midiasMatch.map((f) => {
+                    const idx = fornecedoresMatch.indexOf(f);
+                    const nome = getNome(f);
                     const tipo = "tipo_midia" in f ? (f as MidiaGrupo).tipo_midia : "";
                     return (
-                      <div key={i} style={{ borderBottom: "1px solid #F1F5F9" }}>
-                        {!f.fornecedor_id && (
-                          <AlertaBloqueio text={`"${nome}" não encontrado — será ignorado`} />
-                        )}
+                      <div key={idx} style={{ borderBottom: "1px solid #F1F5F9" }}>
                         <div className="px-4 py-3 flex items-center gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
                               {f.fornecedor_id
                                 ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#059669" }} />
-                                : <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#D97706" }} />
-                              }
+                                : <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#D97706" }} />}
                               <p className="text-sm font-semibold truncate" style={{ color: "#0F172A" }}>{nome}</p>
-                              <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ backgroundColor: "#EEF2FF", color: "#2E60FF" }}>
-                                {tipo}
-                              </span>
+                              <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ backgroundColor: "#EEF2FF", color: "#2E60FF" }}>{tipo}</span>
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="text-sm font-bold" style={{ color: "#0F172A" }}>
-                              {formatCurrency(f.valor_total_editavel)}
-                            </p>
+                            <p className="text-sm font-bold" style={{ color: "#0F172A" }}>{formatCurrency(f.valor_total_editavel)}</p>
                             <div className="flex items-center gap-1 mt-1 justify-end">
                               <span className="text-xs" style={{ color: "#94A3B8" }}>hon. 20%</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={f.honorarios_editavel}
-                                onChange={(e) => updateHonorarios(globalIdx, e.target.value)}
+                              <input type="number" step="0.01" value={f.honorarios_editavel}
+                                onChange={(e) => updateHonorarios(idx, e.target.value)}
                                 className="text-xs text-right rounded border px-1.5 py-0.5 w-24 outline-none"
-                                style={{ borderColor: "#E2E8F0", color: "#334155" }}
-                              />
+                                style={{ borderColor: "#E2E8F0", color: "#334155" }} />
                             </div>
                           </div>
                         </div>
+                        {!f.fornecedor_id && (
+                          <ResolucaoInline
+                            dbFornecedores={dbFornecedores}
+                            resolucao={resolucoes[idx]}
+                            onIniciarAssociar={() => iniciarAssociar(idx)}
+                            onAssociar={(forn) => handleAssociar(idx, forn)}
+                            onCriar={() => handleCriarNovo(idx)}
+                            onCancelar={() => cancelarResolucao(idx)}
+                            onBuscaChange={(v) => setBusca(idx, v)}
+                          />
+                        )}
                       </div>
                     );
                   })}
                 </Section>
               )}
 
-              {createError && (
-                <p className="text-sm" style={{ color: "#EF4444" }}>{createError}</p>
-              )}
+              {createError && <p className="text-sm" style={{ color: "#EF4444" }}>{createError}</p>}
             </div>
           )}
 
@@ -646,9 +675,7 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
             <div className="flex flex-col items-center justify-center py-20 gap-4">
               <Loader2 className="w-10 h-10 animate-spin" style={{ color: "#2E60FF" }} />
               <p className="text-sm font-semibold" style={{ color: "#334155" }}>Criando faturamento...</p>
-              <p className="text-xs" style={{ color: "#94A3B8" }}>
-                Registrando custos internos e fornecedores
-              </p>
+              <p className="text-xs" style={{ color: "#94A3B8" }}>Registrando custos internos e fornecedores</p>
             </div>
           )}
         </div>
@@ -656,31 +683,21 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
         {/* Footer */}
         {step <= 1 && (
           <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: "#E2E8F0" }}>
-            <button
-              type="button"
-              onClick={step === 0 ? resetAndClose : () => setStep(0)}
+            <button type="button" onClick={step === 0 ? resetAndClose : () => setStep(0)}
               className="px-4 py-2.5 rounded-lg border text-sm font-medium"
-              style={{ borderColor: "#E2E8F0", color: "#64748B" }}
-            >
+              style={{ borderColor: "#E2E8F0", color: "#64748B" }}>
               {step === 0 ? "Cancelar" : "← Voltar"}
             </button>
-
             {step === 1 && (
-              <button
-                type="button"
-                onClick={handleCreate}
+              <button type="button" onClick={handleCreate}
                 disabled={!clienteMatch || clienteMatch === "loading" || creating}
                 className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white flex items-center justify-center gap-2"
-                style={{
-                  backgroundColor: "#2E60FF",
-                  opacity: (!clienteMatch || clienteMatch === "loading") ? 0.5 : 1,
-                }}
-              >
+                style={{ backgroundColor: "#2E60FF", opacity: (!clienteMatch || clienteMatch === "loading") ? 0.5 : 1 }}>
                 <Upload className="w-4 h-4" />
                 Criar Faturamento
-                {naoEncontrados.length > 0 && (
+                {naoResolvidos.length > 0 && (
                   <span className="text-xs opacity-75">
-                    ({fornecedoresMatch.filter(f => f.fornecedor_id).length}/{fornecedoresMatch.length} fornecedores)
+                    ({fornecedoresMatch.filter((f) => f.fornecedor_id).length}/{fornecedoresMatch.length} vinculados)
                   </span>
                 )}
               </button>

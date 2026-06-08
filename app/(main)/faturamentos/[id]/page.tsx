@@ -207,6 +207,10 @@ export default async function FaturamentoDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
+  // Check if current user is gestor
+  const { data: { user } } = await supabase.auth.getUser();
+  const isGestor = user?.app_metadata?.role === "gestor";
+
   const { data: fat } = await supabase
     .from("faturamentos")
     .select(`
@@ -370,7 +374,9 @@ export default async function FaturamentoDetailPage({
           </h2>
           <FaturamentoDetailClient
             faturamentoId={id}
+            nomeCampanha={fat.nome_campanha}
             fornecedoresJaAdicionados={fornecedoresJaAdicionados}
+            isGestor={isGestor}
           />
         </div>
 
