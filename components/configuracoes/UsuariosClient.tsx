@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { UserPlus, Pencil, Trash2, Mail, Clock, AlertTriangle } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { ConvidarUsuarioModal } from "./ConvidarUsuarioModal";
-import { EditarPerfilModal } from "./EditarPerfilModal";
+import { EditarUsuarioModal } from "./EditarUsuarioModal";
 import { DeletarUsuarioModal } from "./DeletarUsuarioModal";
 
 const PERFIL_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -197,9 +197,10 @@ export function UsuariosClient({
       />
 
       {editando && (
-        <EditarPerfilModal
+        <EditarUsuarioModal
           key={editando.id}
           user={editando}
+          currentUserId={currentUserId}
           onClose={() => setEditando(null)}
           onSaved={() => { setEditando(null); reload(); }}
         />

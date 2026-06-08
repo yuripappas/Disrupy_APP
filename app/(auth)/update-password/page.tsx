@@ -36,7 +36,16 @@ function UpdatePasswordForm() {
     }
 
     setSuccess(true);
-    setTimeout(() => { router.push("/dashboard"); router.refresh(); }, 2000);
+    // Invite: go to login so user enters new credentials
+    // Recovery: go to dashboard (already authenticated)
+    setTimeout(() => {
+      if (isInvite) {
+        router.push("/login");
+      } else {
+        router.push("/dashboard");
+      }
+      router.refresh();
+    }, 2000);
   }
 
   return (
@@ -63,7 +72,9 @@ function UpdatePasswordForm() {
             <div className="flex flex-col items-center gap-3 py-4 text-center">
               <CheckCircle2 className="w-12 h-12" style={{ color: "#059669" }} />
               <p className="text-base font-semibold" style={{ color: "#0F172A" }}>Senha salva!</p>
-              <p className="text-sm" style={{ color: "#64748B" }}>Redirecionando para o sistema...</p>
+              <p className="text-sm" style={{ color: "#64748B" }}>
+                {isInvite ? "Redirecionando para o login..." : "Redirecionando para o sistema..."}
+              </p>
             </div>
           ) : (
             <form onSubmit={handleUpdate} className="space-y-4">

@@ -99,25 +99,44 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
-// ── PATCH /api/admin/users — update role ─────────────────────────────────────
+// ── PATCH /api/admin/users — update role, nome, telefone, email ──────────────
 export async function PATCH(req: NextRequest) {
   const caller = await requireGestor();
   if (!caller) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
 
-  const { userId, role } = await req.json();
-  if (!userId || !role) return NextResponse.json({ error: "userId e role são obrigatórios" }, { status: 400 });
-  if (!ROLE_LABELS[role]) return NextResponse.json({ error: "Role inválido" }, { status: 400 });
+  const { userId, role, nome, telefone, email } = await req.json();
+  if (!userId) return NextResponse.json({ error: "userId é obrigatório" }, { status: 400 });
 
   // Prevent gestor from removing their own gestor role
-  if (caller.id === userId && role !== "gestor") {
+  if (role && caller.id === userId && role !== "gestor") {
     return NextResponse.json({ error: "Você não pode remover seu próprio acesso de gestor" }, { status: 400 });
   }
 
-  const admin = adminClient();
-  const { error } = await admin.auth.admin.updateUserById(userId, {
-    app_metadata: { role },
-  });
+  if (role && !ROLE_LABELS[role]) {
+    return NextResponse.json({ error: "Role inválido" }, { status: 400 });
+  }
 
+  const admin = adminClient();
+
+  // Build update payload — only include fields that were sent
+  const updatePayload: Parameters<typeof admin.auth.admin.updateUserById>[1] = {};
+
+  if (role) {
+    updatePayload.app_metadata = { role };
+  }
+
+  if (nome !== undefined || telefone !== undefined) {
+    updatePayload.user_metadata = {
+      ...(nome     !== undefined && { full_name: nome.trim() }),
+      ...(telefone !== undefined && { phone: telefone.trim() }),
+    };
+  }
+
+  if (email) {
+    updatePayload.email = email.trim().toLowerCase();
+  }
+
+  const { error } = await admin.auth.admin.updateUserById(userId, updatePayload);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ success: true });
