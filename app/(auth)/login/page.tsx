@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
@@ -85,12 +86,18 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label
-                className="block text-sm font-medium mb-1.5"
-                style={{ color: "#334155" }}
-              >
-                Senha
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium" style={{ color: "#334155" }}>
+                  Senha
+                </label>
+                <Link
+                  href="/esqueci-senha"
+                  className="text-xs font-medium"
+                  style={{ color: "#2E60FF" }}
+                >
+                  Esqueci a senha
+                </Link>
+              </div>
               <input
                 type="password"
                 value={password}
