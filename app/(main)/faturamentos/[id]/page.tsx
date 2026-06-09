@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { FaturamentoDetailClient } from "./FaturamentoDetailClient";
 import { FornecedorDocumentosSection } from "@/components/faturamentos/FornecedorDocumentosSection";
+import { CustosInternosSection } from "@/components/faturamentos/CustosInternosSection";
 
 // ── Visual helpers ──────────────────────────────────────────────────────────
 
@@ -216,33 +217,7 @@ export default async function FaturamentoDetailPage({
 
       {/* Custos Internos */}
       {custosInternos.length > 0 && (
-        <div className="rounded-xl border bg-white mb-6 overflow-hidden" style={{ borderColor: "#E2E8F0" }}>
-          <div className="px-6 py-4" style={{ borderBottom: "1px solid #E2E8F0" }}>
-            <h2 className="text-sm font-semibold" style={{ color: "#0F172A" }}>Custos Internos (Tabela de Preços)</h2>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ backgroundColor: "#F8FAFC" }}>
-                <th className="text-left px-6 py-3 text-xs font-medium" style={{ color: "#64748B" }}>Código</th>
-                <th className="text-left px-6 py-3 text-xs font-medium" style={{ color: "#64748B" }}>Serviço</th>
-                <th className="text-right px-6 py-3 text-xs font-medium" style={{ color: "#64748B" }}>Qtde</th>
-                <th className="text-right px-6 py-3 text-xs font-medium" style={{ color: "#64748B" }}>Unit.</th>
-                <th className="text-right px-6 py-3 text-xs font-medium" style={{ color: "#64748B" }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {custosInternos.map((ci: { id: string; codigo?: string; servico: string; qtde: number; valor_unitario: number; valor_total: number }, i: number) => (
-                <tr key={ci.id ?? i} style={{ borderTop: "1px solid #F1F5F9" }}>
-                  <td className="px-6 py-3 font-mono text-xs" style={{ color: "#64748B" }}>{ci.codigo ?? "—"}</td>
-                  <td className="px-6 py-3" style={{ color: "#334155" }}>{ci.servico}</td>
-                  <td className="px-6 py-3 text-right" style={{ color: "#334155" }}>{ci.qtde}</td>
-                  <td className="px-6 py-3 text-right" style={{ color: "#334155" }}>{formatCurrency(ci.valor_unitario)}</td>
-                  <td className="px-6 py-3 text-right font-semibold" style={{ color: "#0F172A" }}>{formatCurrency(ci.valor_total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <CustosInternosSection itens={custosInternos} />
       )}
 
       {/* Fornecedores */}
