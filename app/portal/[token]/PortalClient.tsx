@@ -81,8 +81,6 @@ type FF = {
 
 // ── DocRow ────────────────────────────────────────────────────────────────────
 
-const MAX_FILE_MB = 100;
-
 function DocRow({
   doc,
   ffId,
@@ -105,11 +103,6 @@ function DocRow({
 
   function addFiles(fileList: FileList | File[]) {
     const arr = Array.from(fileList);
-    const tooBig = arr.filter((f) => f.size > MAX_FILE_MB * 1024 * 1024);
-    if (tooBig.length > 0) {
-      setGlobalError(`${tooBig.map((f) => f.name).join(", ")} excedem ${MAX_FILE_MB} MB.`);
-      return;
-    }
     setGlobalError(null);
     setStaged((prev) => [
       ...prev,
@@ -328,7 +321,7 @@ function DocRow({
                 : "Arraste os arquivos ou clique para selecionar"}
             </p>
             <p className="text-xs" style={{ color: "#CBD5E1" }}>
-              Qualquer formato (PDF, vídeo, imagem, ZIP…) · máx. {MAX_FILE_MB} MB cada
+              Qualquer formato — PDF, vídeo, imagem, ZIP e outros
             </p>
           </div>
 
