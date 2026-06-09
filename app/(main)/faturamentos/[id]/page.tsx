@@ -105,7 +105,8 @@ export default async function FaturamentoDetailPage({
         id, valor, honorarios, valor_total, prazo_dias, status, link_token,
         nome_iclips, associado, tipo_iclips,
         fornecedor:fornecedores ( razao_social, cnpj, tipo, contato_nome ),
-        documentos ( id, tipo, label, status, arquivo_url, reprovacao_motivo )
+        documentos ( id, tipo, label, status, arquivo_url, reprovacao_motivo,
+          documento_arquivos ( id, arquivo_url, nome_arquivo, tamanho_bytes, created_at ) )
       )
     `)
     .eq("id", id)

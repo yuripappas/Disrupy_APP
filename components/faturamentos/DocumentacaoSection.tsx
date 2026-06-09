@@ -4,13 +4,21 @@ import { useState, useCallback } from "react";
 import {
   ChevronDown, ChevronUp, FileText, ExternalLink,
   CheckCircle, XCircle, Clock, Check, X, Loader2,
-  Copy, Link2, AlertTriangle, Search,
+  Copy, Link2, AlertTriangle, Search, Film,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeName } from "@/lib/iclips/parser";
 import { formatCurrency } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+type Arquivo = {
+  id: string;
+  arquivo_url: string;
+  nome_arquivo: string;
+  tamanho_bytes: number | null;
+  created_at: string;
+};
 
 type Documento = {
   id: string;
@@ -19,6 +27,7 @@ type Documento = {
   status: string;
   arquivo_url: string | null;
   reprovacao_motivo: string | null;
+  documento_arquivos: Arquivo[];
 };
 
 type DbFornecedorSimple = {
@@ -122,12 +131,30 @@ function DocRow({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm" style={{ color: "#334155" }}>{doc.label}</p>
-          {doc.arquivo_url && (
+          {/* Múltiplos arquivos (novo modelo) */}
+          {(doc.documento_arquivos?.length ?? 0) > 0 ? (
+            <div className="mt-1 space-y-0.5">
+              {doc.documento_arquivos.map((arq) => {
+                const ext = arq.nome_arquivo.split(".").pop()?.toLowerCase() ?? "";
+                const isVideo = ["mp4","mov","avi","mkv","webm"].includes(ext);
+                return (
+                  <a key={arq.id} href={arq.arquivo_url} target="_blank" rel="noreferrer"
+                    className="flex items-center gap-1 text-xs hover:underline" style={{ color: "#2E60FF" }}>
+                    {isVideo
+                      ? <Film className="w-3 h-3 flex-shrink-0" />
+                      : <ExternalLink className="w-3 h-3 flex-shrink-0" />}
+                    <span className="truncate max-w-[180px]">{arq.nome_arquivo}</span>
+                  </a>
+                );
+              })}
+            </div>
+          ) : doc.arquivo_url ? (
+            /* Fallback: arquivo único legado */
             <a href={doc.arquivo_url} target="_blank" rel="noreferrer"
               className="flex items-center gap-1 text-xs mt-0.5 hover:underline" style={{ color: "#2E60FF" }}>
               <ExternalLink className="w-3 h-3" /> Ver arquivo
             </a>
-          )}
+          ) : null}
         </div>
         <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0"
           style={{ backgroundColor: cfg.bg, color: cfg.color }}>

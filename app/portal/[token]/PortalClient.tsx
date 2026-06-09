@@ -1,29 +1,62 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   FileText, Upload, CheckCircle, Clock, XCircle,
-  ExternalLink, Loader2, AlertTriangle, RefreshCw, MessageSquare,
+  ExternalLink, Loader2, AlertTriangle, MessageSquare, X,
+  Film, Image, Archive,
 } from "lucide-react";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const clienteTipoLabel: Record<string, string> = {
   governo_al: "Governo de Alagoas",
-  sebrae: "SEBRAE",
+  sebrae:     "SEBRAE",
   prefeitura: "Prefeitura",
-  brk: "BRK",
-  outro: "Outro",
+  brk:        "BRK",
+  outro:      "Outro",
 };
 
 const docStatusConfig: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
-  pendente:  { label: "Pendente",  color: "#94A3B8", bg: "#F1F5F9",
-    icon: <Clock className="w-3.5 h-3.5" /> },
-  enviado:   { label: "Enviado",   color: "#D97706", bg: "#FFFBEB",
-    icon: <Clock className="w-3.5 h-3.5" /> },
-  aprovado:  { label: "Aprovado",  color: "#059669", bg: "#ECFDF5",
-    icon: <CheckCircle className="w-3.5 h-3.5" /> },
-  reprovado: { label: "Reprovado", color: "#DC2626", bg: "#FEF2F2",
-    icon: <XCircle className="w-3.5 h-3.5" /> },
+  pendente:  { label: "Pendente",  color: "#94A3B8", bg: "#F1F5F9", icon: <Clock   className="w-3.5 h-3.5" /> },
+  enviado:   { label: "Enviado",   color: "#D97706", bg: "#FFFBEB", icon: <Clock   className="w-3.5 h-3.5" /> },
+  aprovado:  { label: "Aprovado",  color: "#059669", bg: "#ECFDF5", icon: <CheckCircle className="w-3.5 h-3.5" /> },
+  reprovado: { label: "Reprovado", color: "#DC2626", bg: "#FEF2F2", icon: <XCircle className="w-3.5 h-3.5" /> },
+};
+
+function formatBytes(b: number): string {
+  if (b < 1024)          return `${b} B`;
+  if (b < 1024 * 1024)   return `${(b / 1024).toFixed(0)} KB`;
+  return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function fileIcon(name: string) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (["mp4", "mov", "avi", "mkv", "webm"].includes(ext))
+    return <Film className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#7C3AED" }} />;
+  if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext))
+    return <Image className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#059669" }} />;
+  if (["zip", "rar", "7z"].includes(ext))
+    return <Archive className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#D97706" }} />;
+  return <FileText className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#64748B" }} />;
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Arquivo = {
+  id: string;
+  arquivo_url: string;
+  nome_arquivo: string;
+  tamanho_bytes: number | null;
+  created_at: string;
+};
+
+type StagedFile = {
+  localId: string;
+  file: File;
+  status: "pending" | "uploading" | "done" | "error";
+  errorMsg?: string;
 };
 
 type Documento = {
@@ -33,6 +66,7 @@ type Documento = {
   status: string;
   arquivo_url: string | null;
   reprovacao_motivo: string | null;
+  documento_arquivos: Arquivo[];
 };
 
 type FF = {
@@ -45,6 +79,10 @@ type FF = {
   documentos: Documento[];
 };
 
+// ── DocRow ────────────────────────────────────────────────────────────────────
+
+const MAX_FILE_MB = 100;
+
 function DocRow({
   doc,
   ffId,
@@ -52,60 +90,129 @@ function DocRow({
 }: {
   doc: Documento;
   ffId: string;
-  onUploaded: (docId: string, url: string) => void;
+  onUploaded: (docId: string, arquivos: Arquivo[]) => void;
 }) {
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [staged, setStaged] = useState<StagedFile[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [globalError, setGlobalError] = useState<string | null>(null);
+
   const cfg = docStatusConfig[doc.status] ?? docStatusConfig.pendente;
+  const existingFiles = doc.documento_arquivos ?? [];
+  const canUpload = doc.status !== "aprovado";
+  const pendingStaged = staged.filter((f) => f.status === "pending");
 
-  async function handleFile(file: File) {
-    if (!file) return;
-    if (file.size > 15 * 1024 * 1024) {
-      setError("Arquivo muito grande. Máximo: 15 MB.");
+  function addFiles(fileList: FileList | File[]) {
+    const arr = Array.from(fileList);
+    const tooBig = arr.filter((f) => f.size > MAX_FILE_MB * 1024 * 1024);
+    if (tooBig.length > 0) {
+      setGlobalError(`${tooBig.map((f) => f.name).join(", ")} excedem ${MAX_FILE_MB} MB.`);
       return;
     }
-
-    setUploading(true);
-    setError(null);
-
-    const supabase = createClient();
-    const ext = file.name.split(".").pop() ?? "bin";
-    const path = `${ffId}/${doc.tipo}-${Date.now()}.${ext}`;
-
-    const { error: upErr } = await supabase.storage
-      .from("documentos")
-      .upload(path, file, { upsert: true });
-
-    if (upErr) {
-      setError("Erro ao enviar arquivo. Tente novamente.");
-      setUploading(false);
-      return;
-    }
-
-    const { data: urlData } = supabase.storage
-      .from("documentos")
-      .getPublicUrl(path);
-
-    const publicUrl = urlData.publicUrl;
-
-    const { error: dbErr } = await supabase
-      .from("documentos")
-      .update({ status: "enviado", arquivo_url: publicUrl })
-      .eq("id", doc.id);
-
-    if (dbErr) {
-      setError("Arquivo enviado mas erro ao salvar. Tente novamente.");
-      setUploading(false);
-      return;
-    }
-
-    onUploaded(doc.id, publicUrl);
-    setUploading(false);
+    setGlobalError(null);
+    setStaged((prev) => [
+      ...prev,
+      ...arr.map((f) => ({
+        localId: Math.random().toString(36).slice(2),
+        file: f,
+        status: "pending" as const,
+      })),
+    ]);
   }
 
+  function removeStaged(localId: string) {
+    setStaged((prev) => prev.filter((f) => f.localId !== localId));
+  }
+
+  const handleUploadAll = useCallback(async () => {
+    const toUpload = staged.filter((f) => f.status === "pending");
+    if (toUpload.length === 0) return;
+    setUploading(true);
+    setGlobalError(null);
+
+    const supabase = createClient();
+    const uploaded: Arquivo[] = [];
+
+    for (const sf of toUpload) {
+      // Mark uploading
+      setStaged((prev) =>
+        prev.map((f) => f.localId === sf.localId ? { ...f, status: "uploading" } : f)
+      );
+
+      const safeName = sf.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${ffId}/${doc.tipo}-${Date.now()}-${safeName}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("documentos")
+        .upload(path, sf.file, { upsert: true });
+
+      if (upErr) {
+        setStaged((prev) =>
+          prev.map((f) =>
+            f.localId === sf.localId
+              ? { ...f, status: "error", errorMsg: "Falha no envio" }
+              : f
+          )
+        );
+        continue;
+      }
+
+      const { data: urlData } = supabase.storage.from("documentos").getPublicUrl(path);
+
+      const { data: arq, error: dbErr } = await supabase
+        .from("documento_arquivos")
+        .insert({
+          documento_id: doc.id,
+          arquivo_url: urlData.publicUrl,
+          nome_arquivo: sf.file.name,
+          tamanho_bytes: sf.file.size,
+        })
+        .select()
+        .single();
+
+      if (dbErr || !arq) {
+        setStaged((prev) =>
+          prev.map((f) =>
+            f.localId === sf.localId
+              ? { ...f, status: "error", errorMsg: "Enviado, erro ao registrar" }
+              : f
+          )
+        );
+        continue;
+      }
+
+      uploaded.push(arq as Arquivo);
+      setStaged((prev) =>
+        prev.map((f) => f.localId === sf.localId ? { ...f, status: "done" } : f)
+      );
+    }
+
+    // Atualiza status do documento
+    if (uploaded.length > 0) {
+      const firstUrl = uploaded[0].arquivo_url;
+      await supabase
+        .from("documentos")
+        .update({ status: "enviado", arquivo_url: firstUrl })
+        .eq("id", doc.id);
+
+      onUploaded(doc.id, uploaded);
+    }
+
+    // Remove os enviados com sucesso da staging area após 1s
+    setTimeout(() => {
+      setStaged((prev) => prev.filter((f) => f.status === "error"));
+    }, 800);
+
+    setUploading(false);
+  }, [staged, ffId, doc.tipo, doc.id, onUploaded]);
+
   return (
-    <div className="p-4 rounded-xl border bg-white" style={{ borderColor: "#E2E8F0" }}>
+    <div
+      className="p-4 rounded-xl border bg-white"
+      style={{ borderColor: doc.status === "reprovado" ? "#FCA5A5" : "#E2E8F0" }}
+    >
+      {/* Cabeçalho */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div
@@ -114,34 +221,29 @@ function DocRow({
           >
             <FileText className="w-4 h-4" style={{ color: cfg.color }} />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium" style={{ color: "#0F172A" }}>{doc.label}</p>
-            {doc.arquivo_url && (
-              <a
-                href={doc.arquivo_url}
-                target="_blank"
-                className="flex items-center gap-1 text-xs mt-0.5 hover:underline"
-                style={{ color: "#2E60FF" }}
-              >
-                <ExternalLink className="w-3 h-3" /> Ver arquivo enviado
-              </a>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "#0F172A" }}>{doc.label}</p>
+            {existingFiles.length > 0 && (
+              <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
+                {existingFiles.length} arquivo{existingFiles.length > 1 ? "s" : ""} enviado{existingFiles.length > 1 ? "s" : ""}
+              </p>
             )}
           </div>
         </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span
-            className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full"
-            style={{ backgroundColor: cfg.bg, color: cfg.color }}
-          >
-            {cfg.icon} {cfg.label}
-          </span>
-        </div>
+        <span
+          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0"
+          style={{ backgroundColor: cfg.bg, color: cfg.color }}
+        >
+          {cfg.icon} {cfg.label}
+        </span>
       </div>
 
       {/* Motivo de reprovação */}
       {doc.status === "reprovado" && doc.reprovacao_motivo && (
-        <div className="mt-3 px-3 py-2.5 rounded-lg flex items-start gap-2" style={{ backgroundColor: "#FEF2F2" }}>
+        <div
+          className="mt-3 px-3 py-2.5 rounded-lg flex items-start gap-2"
+          style={{ backgroundColor: "#FEF2F2" }}
+        >
           <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#DC2626" }} />
           <div>
             <p className="text-xs font-semibold mb-0.5" style={{ color: "#991B1B" }}>Motivo da reprovação:</p>
@@ -150,41 +252,161 @@ function DocRow({
         </div>
       )}
 
-      {doc.status !== "aprovado" && (
-        <div className="mt-3">
+      {/* Arquivos já enviados */}
+      {existingFiles.length > 0 && (
+        <div className="mt-3 rounded-lg overflow-hidden border" style={{ borderColor: "#E2E8F0" }}>
+          {existingFiles.map((arq, i) => (
+            <div
+              key={arq.id}
+              className="flex items-center gap-2.5 px-3 py-2.5"
+              style={{
+                borderTop: i > 0 ? "1px solid #F1F5F9" : undefined,
+                backgroundColor: "#F8FAFC",
+              }}
+            >
+              {fileIcon(arq.nome_arquivo)}
+              <span className="text-xs truncate flex-1" style={{ color: "#334155" }}>
+                {arq.nome_arquivo}
+              </span>
+              {arq.tamanho_bytes != null && (
+                <span className="text-xs flex-shrink-0" style={{ color: "#94A3B8" }}>
+                  {formatBytes(arq.tamanho_bytes)}
+                </span>
+              )}
+              <a
+                href={arq.arquivo_url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-xs font-medium flex-shrink-0 hover:underline"
+                style={{ color: "#2E60FF" }}
+              >
+                <ExternalLink className="w-3 h-3" /> Abrir
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Área de upload */}
+      {canUpload && (
+        <div className="mt-3 space-y-2">
           <input
             ref={inputRef}
             type="file"
+            multiple
             className="hidden"
-            accept=".pdf,.jpg,.jpeg,.png,.webp"
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleFile(f);
+              if (e.target.files) addFiles(e.target.files);
               e.target.value = "";
             }}
           />
-          <button
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center gap-2 w-full justify-center py-2.5 rounded-lg border-2 border-dashed text-sm font-medium transition-colors"
+
+          {/* Drop zone */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
+            }}
+            onClick={() => !uploading && inputRef.current?.click()}
+            className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-lg border-2 border-dashed transition-colors"
             style={{
-              borderColor: uploading ? "#CBD5E1" : "#2E60FF",
-              color: uploading ? "#94A3B8" : "#2E60FF",
-              backgroundColor: uploading ? "#F8FAFC" : "#EEF2FF",
+              borderColor: dragging ? "#2E60FF" : "#CBD5E1",
+              backgroundColor: dragging ? "#EEF2FF" : "#F8FAFC",
               cursor: uploading ? "not-allowed" : "pointer",
             }}
           >
-            {uploading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
-            ) : doc.arquivo_url ? (
-              <><RefreshCw className="w-4 h-4" /> Substituir arquivo</>
-            ) : (
-              <><Upload className="w-4 h-4" /> Selecionar arquivo (PDF, JPG, PNG)</>
-            )}
-          </button>
-          {error && (
-            <p className="mt-2 text-xs flex items-center gap-1" style={{ color: "#DC2626" }}>
-              <AlertTriangle className="w-3 h-3" /> {error}
+            <Upload
+              className="w-5 h-5"
+              style={{ color: dragging ? "#2E60FF" : "#94A3B8" }}
+            />
+            <p className="text-xs font-medium" style={{ color: dragging ? "#2E60FF" : "#64748B" }}>
+              {existingFiles.length > 0
+                ? "Adicionar mais arquivos"
+                : "Arraste os arquivos ou clique para selecionar"}
+            </p>
+            <p className="text-xs" style={{ color: "#CBD5E1" }}>
+              Qualquer formato (PDF, vídeo, imagem, ZIP…) · máx. {MAX_FILE_MB} MB cada
+            </p>
+          </div>
+
+          {/* Fila de staging */}
+          {staged.length > 0 && (
+            <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#E2E8F0" }}>
+              {staged.map((sf, i) => (
+                <div
+                  key={sf.localId}
+                  className="flex items-center gap-2.5 px-3 py-2.5"
+                  style={{
+                    borderTop: i > 0 ? "1px solid #F1F5F9" : undefined,
+                    backgroundColor:
+                      sf.status === "error"     ? "#FEF2F2" :
+                      sf.status === "done"      ? "#F0FDF4" :
+                      sf.status === "uploading" ? "#EEF2FF" :
+                      "#FAFAFA",
+                  }}
+                >
+                  {sf.status === "uploading" ? (
+                    <Loader2 className="w-3.5 h-3.5 flex-shrink-0 animate-spin" style={{ color: "#2E60FF" }} />
+                  ) : sf.status === "done" ? (
+                    <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#059669" }} />
+                  ) : sf.status === "error" ? (
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#DC2626" }} />
+                  ) : (
+                    fileIcon(sf.file.name)
+                  )}
+                  <span
+                    className="text-xs truncate flex-1"
+                    style={{
+                      color: sf.status === "error" ? "#991B1B" : "#334155",
+                    }}
+                  >
+                    {sf.file.name}
+                    {sf.errorMsg && (
+                      <span style={{ color: "#DC2626" }}> · {sf.errorMsg}</span>
+                    )}
+                  </span>
+                  <span className="text-xs flex-shrink-0" style={{ color: "#94A3B8" }}>
+                    {formatBytes(sf.file.size)}
+                  </span>
+                  {sf.status === "pending" && !uploading && (
+                    <button
+                      type="button"
+                      onClick={() => removeStaged(sf.localId)}
+                      className="p-0.5 rounded hover:bg-slate-200 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" style={{ color: "#94A3B8" }} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Botão enviar */}
+          {pendingStaged.length > 0 && !uploading && (
+            <button
+              onClick={handleUploadAll}
+              className="w-full py-2.5 rounded-lg text-sm font-semibold text-white flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+              style={{ backgroundColor: "#2E60FF" }}
+            >
+              <Upload className="w-4 h-4" />
+              Enviar {pendingStaged.length} arquivo{pendingStaged.length > 1 ? "s" : ""}
+            </button>
+          )}
+
+          {uploading && (
+            <div className="flex items-center justify-center gap-2 py-2 text-xs" style={{ color: "#64748B" }}>
+              <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#2E60FF" }} />
+              Enviando arquivos, aguarde…
+            </div>
+          )}
+
+          {globalError && (
+            <p className="text-xs flex items-center gap-1" style={{ color: "#DC2626" }}>
+              <AlertTriangle className="w-3 h-3" /> {globalError}
             </p>
           )}
         </div>
@@ -193,21 +415,36 @@ function DocRow({
   );
 }
 
+// ── PortalClient ──────────────────────────────────────────────────────────────
+
 export function PortalClient({ ff, token }: { ff: FF; token: string }) {
-  const [docs, setDocs] = useState<Documento[]>(ff.documentos);
+  const [docs, setDocs] = useState<Documento[]>(
+    ff.documentos.map((d) => ({
+      ...d,
+      documento_arquivos: d.documento_arquivos ?? [],
+    }))
+  );
 
-  function handleUploaded(docId: string, url: string) {
+  const handleUploaded = useCallback((docId: string, arquivos: Arquivo[]) => {
     setDocs((prev) =>
-      prev.map((d) => d.id === docId ? { ...d, status: "enviado", arquivo_url: url } : d)
+      prev.map((d) =>
+        d.id !== docId
+          ? d
+          : {
+              ...d,
+              status: "enviado",
+              arquivo_url: arquivos[0]?.arquivo_url ?? d.arquivo_url,
+              documento_arquivos: [...(d.documento_arquivos ?? []), ...arquivos],
+            }
+      )
     );
-  }
+  }, []);
 
-  const enviados = docs.filter((d) => d.status === "enviado" || d.status === "aprovado").length;
+  const enviados  = docs.filter((d) => d.status === "enviado"  || d.status === "aprovado").length;
   const aprovados = docs.filter((d) => d.status === "aprovado").length;
-  const total = docs.length;
-  const pct = total > 0 ? Math.round((enviados / total) * 100) : 0;
-
-  const allDone = enviados === total;
+  const total     = docs.length;
+  const pct       = total > 0 ? Math.round((enviados / total) * 100) : 0;
+  const allDone   = enviados === total && total > 0;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#F8FAFC" }}>
@@ -229,7 +466,7 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
 
-        {/* Campaign card */}
+        {/* Campanha */}
         <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
           <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>
             {clienteTipoLabel[ff.faturamento.cliente_tipo] ?? ff.faturamento.cliente_tipo}
@@ -238,7 +475,7 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
           <p className="text-sm mt-0.5" style={{ color: "#64748B" }}>{ff.faturamento.cliente_nome}</p>
         </div>
 
-        {/* Supplier card */}
+        {/* Fornecedor */}
         <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
           <div className="flex items-center gap-3">
             <div
@@ -256,8 +493,11 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
           </div>
         </div>
 
-        {/* Progress */}
-        <div className="rounded-xl border bg-white p-4" style={{ borderColor: allDone ? "#BBF7D0" : "#E2E8F0", backgroundColor: allDone ? "#F0FDF4" : "white" }}>
+        {/* Progresso */}
+        <div
+          className="rounded-xl border bg-white p-4"
+          style={{ borderColor: allDone ? "#BBF7D0" : "#E2E8F0", backgroundColor: allDone ? "#F0FDF4" : "white" }}
+        >
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm font-semibold" style={{ color: allDone ? "#059669" : "#0F172A" }}>
               {allDone ? "✓ Todos os documentos enviados!" : "Documentos necessários"}
@@ -275,12 +515,12 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
           </div>
           {!allDone && (
             <p className="text-xs mt-2" style={{ color: "#94A3B8" }}>
-              Envie os documentos abaixo. Após análise, nossa equipe entrará em contato.
+              Envie os documentos abaixo. Você pode enviar vários arquivos por item — PDF, vídeos, imagens e qualquer outro formato são aceitos.
             </p>
           )}
         </div>
 
-        {/* Documents */}
+        {/* Documentos */}
         <div className="space-y-3">
           {docs
             .sort((a, b) => {
@@ -288,12 +528,7 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
               return (order[a.status as keyof typeof order] ?? 1) - (order[b.status as keyof typeof order] ?? 1);
             })
             .map((doc) => (
-              <DocRow
-                key={doc.id}
-                doc={doc}
-                ffId={ff.id}
-                onUploaded={handleUploaded}
-              />
+              <DocRow key={doc.id} doc={doc} ffId={ff.id} onUploaded={handleUploaded} />
             ))}
         </div>
 
@@ -301,7 +536,7 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
         <p className="text-center text-xs pb-6" style={{ color: "#CBD5E1" }}>
           Dúvidas? Entre em contato com a Disrupy Comunicação.
           <br />
-          <span className="font-mono" style={{ fontSize: "10px" }}>ref: {token.slice(0, 8)}...</span>
+          <span className="font-mono" style={{ fontSize: "10px" }}>ref: {token.slice(0, 8)}…</span>
         </p>
       </div>
     </div>
