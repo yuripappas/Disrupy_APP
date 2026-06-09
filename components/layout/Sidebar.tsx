@@ -11,12 +11,12 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { MeuPerfilModal } from "@/components/perfil/MeuPerfilModal";
 
-const navItems = [
-  { href: "/dashboard",     label: "Dashboard",    icon: LayoutDashboard },
-  { href: "/faturamentos",  label: "Faturamentos", icon: FileText },
-  { href: "/fornecedores",  label: "Fornecedores", icon: Users },
-  { href: "/certidoes",     label: "Certidões",    icon: ShieldCheck },
-  { href: "/configuracoes", label: "Configurações", icon: Settings },
+const NAV_ITEMS = [
+  { href: "/dashboard",     label: "Dashboard",     icon: LayoutDashboard, gestorOnly: false },
+  { href: "/faturamentos",  label: "Faturamentos",  icon: FileText,        gestorOnly: false },
+  { href: "/fornecedores",  label: "Fornecedores",  icon: Users,           gestorOnly: false },
+  { href: "/certidoes",     label: "Certidões",     icon: ShieldCheck,     gestorOnly: false },
+  { href: "/configuracoes", label: "Configurações", icon: Settings,        gestorOnly: true  },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
@@ -40,9 +40,11 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUser }) {
     router.refresh();
   }
 
+  const isGestor     = currentUser.role === "gestor";
   const displayName  = currentUser.nome || currentUser.email.split("@")[0];
   const initials     = displayName.charAt(0).toUpperCase();
   const roleLabel    = ROLE_LABEL[currentUser.role] ?? "";
+  const navItems     = NAV_ITEMS.filter((item) => !item.gestorOnly || isGestor);
 
   return (
     <>

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ConfigTabNav } from "@/components/configuracoes/ConfigTabNav";
 
@@ -5,6 +6,8 @@ export default async function ConfiguracoesLayout({ children }: { children: Reac
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const isGestor = user?.app_metadata?.role === "gestor";
+
+  if (!isGestor) redirect("/dashboard");
 
   const tabs = [
     { href: "/configuracoes", label: "Integrações" },
