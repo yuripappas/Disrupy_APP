@@ -192,6 +192,7 @@ function DocRow({
             fileContent,
             mimeType:    sf.file.type || "application/octet-stream",
             ano,
+            clienteGrupo:   faturamento.cliente_tipo === "governo_al" ? "GOVERNO DE ALAGOAS" : "",
             clienteNome:    faturamento.cliente_nome  ?? "SEM_CLIENTE",
             jobId:          faturamento.iclips_job_id ?? `FF-${ffId.slice(0, 6)}`,
             campanha:       faturamento.nome_campanha  ?? "SEM_NOME",
