@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   FileText, Upload, CheckCircle, Clock, XCircle,
-  ExternalLink, Loader2, AlertTriangle, RefreshCw,
+  ExternalLink, Loader2, AlertTriangle, RefreshCw, MessageSquare,
 } from "lucide-react";
 
 const clienteTipoLabel: Record<string, string> = {
@@ -32,6 +32,7 @@ type Documento = {
   label: string;
   status: string;
   arquivo_url: string | null;
+  reprovacao_motivo: string | null;
 };
 
 type FF = {
@@ -137,6 +138,17 @@ function DocRow({
           </span>
         </div>
       </div>
+
+      {/* Motivo de reprovação */}
+      {doc.status === "reprovado" && doc.reprovacao_motivo && (
+        <div className="mt-3 px-3 py-2.5 rounded-lg flex items-start gap-2" style={{ backgroundColor: "#FEF2F2" }}>
+          <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#DC2626" }} />
+          <div>
+            <p className="text-xs font-semibold mb-0.5" style={{ color: "#991B1B" }}>Motivo da reprovação:</p>
+            <p className="text-xs" style={{ color: "#991B1B" }}>{doc.reprovacao_motivo}</p>
+          </div>
+        </div>
+      )}
 
       {doc.status !== "aprovado" && (
         <div className="mt-3">

@@ -6,13 +6,12 @@ import {
   Clock,
   AlertTriangle,
   FileText,
-  Upload,
-  ExternalLink,
   ChevronRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { FaturamentoDetailClient } from "./FaturamentoDetailClient";
+import { FornecedorDocumentosSection } from "@/components/faturamentos/FornecedorDocumentosSection";
 
 // ── Visual helpers ──────────────────────────────────────────────────────────
 
@@ -23,12 +22,6 @@ const etapaStatusStyle: Record<string, { ring: string; bg: string; text: string 
   pendente:     { ring: "#E2E8F0", bg: "white",   text: "#94A3B8" },
 };
 
-const docStatusConfig: Record<string, { label: string; color: string; bg: string }> = {
-  pendente:  { label: "Pendente",  color: "#94A3B8", bg: "#F1F5F9" },
-  enviado:   { label: "Enviado",   color: "#D97706", bg: "#FFFBEB" },
-  aprovado:  { label: "Aprovado",  color: "#059669", bg: "#ECFDF5" },
-  reprovado: { label: "Reprovado", color: "#DC2626", bg: "#FEF2F2" },
-};
 
 const clienteTipoLabel: Record<string, string> = {
   governo_al: "Governo de Alagoas",
@@ -88,114 +81,6 @@ function EtapaCircle({
   );
 }
 
-function DocumentoRow({
-  doc,
-}: {
-  doc: { tipo: string; label: string; status: string; arquivo_url?: string | null };
-}) {
-  const cfg = docStatusConfig[doc.status] ?? docStatusConfig.pendente;
-  return (
-    <div className="flex items-center justify-between py-2.5 px-4" style={{ borderBottom: "1px solid #F1F5F9" }}>
-      <div className="flex items-center gap-3">
-        <FileText className="w-4 h-4" style={{ color: "#94A3B8" }} />
-        <span className="text-sm" style={{ color: "#334155" }}>{doc.label}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: cfg.bg, color: cfg.color }}>
-          {cfg.label}
-        </span>
-        {doc.arquivo_url ? (
-          <a href={doc.arquivo_url} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors" title="Ver arquivo" target="_blank">
-            <ExternalLink className="w-3.5 h-3.5" style={{ color: "#2E60FF" }} />
-          </a>
-        ) : (
-          <button className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors" title="Fazer upload">
-            <Upload className="w-3.5 h-3.5" style={{ color: "#94A3B8" }} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function FornecedorCard({ ff }: { ff: {
-  id: string; valor: number; honorarios: number; valor_total: number;
-  prazo_dias: number; status: string; link_token?: string | null;
-  fornecedor: { razao_social: string; cnpj: string; tipo: string; contato_nome?: string | null };
-  documentos: { tipo: string; label: string; status: string; arquivo_url?: string | null }[];
-} }) {
-  const completos = ff.documentos.filter((d) => d.status === "aprovado" || d.status === "enviado").length;
-  const total = ff.documentos.length;
-  const pct = total > 0 ? Math.round((completos / total) * 100) : 0;
-
-  const statusColor: Record<string, string> = {
-    aguardando: "#94A3B8",
-    parcial:    "#D97706",
-    completo:   "#059669",
-  };
-  const statusLabel: Record<string, string> = {
-    aguardando: "Aguardando",
-    parcial:    "Parcial",
-    completo:   "Completo",
-  };
-
-  return (
-    <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#E2E8F0" }}>
-      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #F1F5F9" }}>
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <span
-              className="text-xs font-medium px-2 py-0.5 rounded-full text-white"
-              style={{ backgroundColor: ff.fornecedor.tipo === "midia" ? "#00246D" : "#7C3AED" }}
-            >
-              {ff.fornecedor.tipo === "midia" ? "Mídia" : "Produção"}
-            </span>
-            <span
-              className="text-xs font-medium px-2 py-0.5 rounded-md"
-              style={{ backgroundColor: (statusColor[ff.status] ?? "#94A3B8") + "20", color: statusColor[ff.status] ?? "#94A3B8" }}
-            >
-              {statusLabel[ff.status] ?? ff.status}
-            </span>
-          </div>
-          <h4 className="font-semibold text-sm" style={{ color: "#0F172A" }}>{ff.fornecedor.razao_social}</h4>
-          <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-            {ff.fornecedor.cnpj}{ff.fornecedor.contato_nome ? ` · ${ff.fornecedor.contato_nome}` : ""}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(ff.valor_total)}</p>
-          <p className="text-xs" style={{ color: "#94A3B8" }}>
-            {formatCurrency(ff.valor)} + hon. {formatCurrency(ff.honorarios ?? 0)}
-          </p>
-          <div className="flex items-center gap-1.5 mt-2 justify-end">
-            <div className="h-1.5 w-20 rounded-full overflow-hidden" style={{ backgroundColor: "#E2E8F0" }}>
-              <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#059669" : "#2E60FF" }} />
-            </div>
-            <span className="text-xs" style={{ color: "#64748B" }}>{completos}/{total}</span>
-          </div>
-        </div>
-      </div>
-      <div>
-        {ff.documentos.map((doc) => (
-          <DocumentoRow key={doc.tipo} doc={doc} />
-        ))}
-      </div>
-      <div className="px-5 py-3 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC" }}>
-        <p className="text-xs" style={{ color: "#94A3B8" }}>Prazo: {ff.prazo_dias} dias úteis</p>
-        {ff.link_token && (
-          <a
-            href={`/portal/${ff.link_token}`}
-            target="_blank"
-            className="flex items-center gap-1 text-xs font-medium"
-            style={{ color: "#2E60FF" }}
-          >
-            Link do portal <ExternalLink className="w-3 h-3" />
-          </a>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
@@ -207,6 +92,9 @@ export default async function FaturamentoDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
+  const { data: { user } } = await supabase.auth.getUser();
+  const isRevisor = user?.app_metadata?.role === "gestor" || user?.app_metadata?.role === "faturamento";
+
   const { data: fat } = await supabase
     .from("faturamentos")
     .select(`
@@ -216,7 +104,7 @@ export default async function FaturamentoDetailPage({
       faturamento_fornecedores (
         id, valor, honorarios, valor_total, prazo_dias, status, link_token,
         fornecedor:fornecedores ( razao_social, cnpj, tipo, contato_nome ),
-        documentos ( tipo, label, status, arquivo_url )
+        documentos ( id, tipo, label, status, arquivo_url, reprovacao_motivo )
       )
     `)
     .eq("id", id)
@@ -374,26 +262,8 @@ export default async function FaturamentoDetailPage({
           />
         </div>
 
-        {fornecedores.length > 0 ? (
-          <div className="space-y-4">
-            {fornecedores.map((ff: {
-              id: string; valor: number; honorarios: number; valor_total: number;
-              prazo_dias: number; status: string; link_token?: string | null;
-              fornecedor: { razao_social: string; cnpj: string; tipo: string; contato_nome?: string | null };
-              documentos: { tipo: string; label: string; status: string; arquivo_url?: string | null }[];
-            }) => (
-              <FornecedorCard key={ff.id} ff={ff} />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-xl border p-12 text-center" style={{ borderColor: "#E2E8F0", borderStyle: "dashed" }}>
-            <FileText className="w-10 h-10 mx-auto mb-3" style={{ color: "#CBD5E1" }} />
-            <p className="text-sm font-medium" style={{ color: "#94A3B8" }}>Nenhum fornecedor adicionado ainda.</p>
-            <p className="text-xs mt-1" style={{ color: "#CBD5E1" }}>
-              Clique em &quot;Adicionar Fornecedor&quot; para começar.
-            </p>
-          </div>
-        )}
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <FornecedorDocumentosSection initialFFs={fornecedores as any} isRevisor={isRevisor} />
       </div>
     </div>
   );

@@ -16,7 +16,7 @@ export default async function PortalPage({
       `id, status, prazo_dias, valor_total, link_token,
        fornecedor:fornecedores (razao_social, cnpj, tipo, contato_nome),
        faturamento:faturamentos (nome_campanha, cliente_nome, cliente_tipo),
-       documentos (id, tipo, label, status, arquivo_url)`
+       documentos (id, tipo, label, status, arquivo_url, reprovacao_motivo)`
     )
     .eq("link_token", token)
     .single();
