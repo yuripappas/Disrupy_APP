@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -13,6 +13,32 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Detecta fluxo implícito do Supabase (tokens no hash da URL)
+  // Acontece quando o convite ou reset de senha usa hash em vez de token_hash
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash || !hash.includes("access_token")) return;
+
+    const params = new URLSearchParams(hash.substring(1));
+    const accessToken  = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    const type         = params.get("type"); // "invite" | "recovery"
+
+    if (!accessToken || !refreshToken) return;
+
+    const supabase = createClient();
+    supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+      .then(({ error }) => {
+        if (!error) {
+          if (type === "invite" || type === "recovery") {
+            router.replace(`/update-password?type=${type}`);
+          } else {
+            router.replace("/dashboard");
+          }
+        }
+      });
+  }, [router]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
