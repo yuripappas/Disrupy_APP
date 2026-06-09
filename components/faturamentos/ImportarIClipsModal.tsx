@@ -423,6 +423,13 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
       );
     }
 
+    // Cria estrutura de pastas no Google Drive em background
+    fetch("/api/drive/criar-pasta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ faturamentoId: fat.id }),
+    }).catch((e) => console.warn("[drive/criar-pasta] background error:", e));
+
     router.push(`/faturamentos/${fat.id}`);
     router.refresh();
     resetAndClose();

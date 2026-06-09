@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
 import {
   FileText, Upload, CheckCircle, Clock, XCircle,
   ExternalLink, Loader2, AlertTriangle, MessageSquare, X,
@@ -124,71 +123,94 @@ function DocRow({
     setUploading(true);
     setGlobalError(null);
 
-    const supabase = createClient();
     const uploaded: Arquivo[] = [];
 
     for (const sf of toUpload) {
-      // Mark uploading
+      // 1. Marca como enviando
       setStaged((prev) =>
         prev.map((f) => f.localId === sf.localId ? { ...f, status: "uploading" } : f)
       );
 
-      const safeName = sf.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const path = `${ffId}/${doc.tipo}-${Date.now()}-${safeName}`;
+      try {
+        // 2. Solicita sessão de upload resumível ao servidor
+        const initRes = await fetch("/api/drive/init-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            documentoId: doc.id,
+            ffId,
+            filename:  sf.file.name,
+            mimeType:  sf.file.type || "application/octet-stream",
+            fileSize:  sf.file.size,
+          }),
+        });
 
-      const { error: upErr } = await supabase.storage
-        .from("documentos")
-        .upload(path, sf.file, { upsert: true });
+        if (!initRes.ok) {
+          const err = await initRes.json().catch(() => ({}));
+          throw new Error(err.error ?? "Erro ao iniciar upload");
+        }
 
-      if (upErr) {
+        const { uploadUrl } = await initRes.json() as { uploadUrl: string };
+
+        // 3. Upload direto para o Google Drive (sem passar pelo Vercel)
+        //    Isso evita qualquer limite de tamanho de arquivo.
+        const putRes = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type":   sf.file.type || "application/octet-stream",
+            "Content-Length": String(sf.file.size),
+          },
+          body: sf.file,
+        });
+
+        if (!putRes.ok && putRes.status !== 200 && putRes.status !== 201) {
+          throw new Error(`Google Drive: status ${putRes.status}`);
+        }
+
+        // 4. Extrai o file ID da resposta do Drive
+        const driveData = await putRes.json().catch(() => null) as { id?: string } | null;
+        const driveFileId = driveData?.id;
+
+        if (!driveFileId) throw new Error("Drive não retornou ID do arquivo");
+
+        // 5. Confirma no servidor: publica, salva em documento_arquivos e atualiza status
+        const confirmRes = await fetch("/api/drive/confirm-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            driveFileId,
+            documentoId: doc.id,
+            ffId,
+            filename:  sf.file.name,
+            fileSize:  sf.file.size,
+          }),
+        });
+
+        if (!confirmRes.ok) {
+          const err = await confirmRes.json().catch(() => ({}));
+          throw new Error(err.error ?? "Erro ao confirmar upload");
+        }
+
+        const { arquivo } = await confirmRes.json() as { arquivo: Arquivo };
+        uploaded.push(arquivo);
+
+        setStaged((prev) =>
+          prev.map((f) => f.localId === sf.localId ? { ...f, status: "done" } : f)
+        );
+
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Falha no envio";
         setStaged((prev) =>
           prev.map((f) =>
             f.localId === sf.localId
-              ? { ...f, status: "error", errorMsg: "Falha no envio" }
+              ? { ...f, status: "error", errorMsg: msg }
               : f
           )
         );
-        continue;
       }
-
-      const { data: urlData } = supabase.storage.from("documentos").getPublicUrl(path);
-
-      const { data: arq, error: dbErr } = await supabase
-        .from("documento_arquivos")
-        .insert({
-          documento_id: doc.id,
-          arquivo_url: urlData.publicUrl,
-          nome_arquivo: sf.file.name,
-          tamanho_bytes: sf.file.size,
-        })
-        .select()
-        .single();
-
-      if (dbErr || !arq) {
-        setStaged((prev) =>
-          prev.map((f) =>
-            f.localId === sf.localId
-              ? { ...f, status: "error", errorMsg: "Enviado, erro ao registrar" }
-              : f
-          )
-        );
-        continue;
-      }
-
-      uploaded.push(arq as Arquivo);
-      setStaged((prev) =>
-        prev.map((f) => f.localId === sf.localId ? { ...f, status: "done" } : f)
-      );
     }
 
-    // Atualiza status do documento
     if (uploaded.length > 0) {
-      const firstUrl = uploaded[0].arquivo_url;
-      await supabase
-        .from("documentos")
-        .update({ status: "enviado", arquivo_url: firstUrl })
-        .eq("id", doc.id);
-
       onUploaded(doc.id, uploaded);
     }
 
@@ -198,7 +220,7 @@ function DocRow({
     }, 800);
 
     setUploading(false);
-  }, [staged, ffId, doc.tipo, doc.id, onUploaded]);
+  }, [staged, ffId, doc.id, onUploaded]);
 
   return (
     <div
