@@ -109,6 +109,7 @@ function DocRow({
   ffId,
   faturamento,
   fornecedorTipo,
+  fornecedorNome,
   token,
   onUploaded,
 }: {
