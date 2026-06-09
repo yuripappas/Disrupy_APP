@@ -11,8 +11,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { FaturamentoDetailClient } from "./FaturamentoDetailClient";
-import { FornecedorDocumentosSection } from "@/components/faturamentos/FornecedorDocumentosSection";
-import { CustosInternosSection } from "@/components/faturamentos/CustosInternosSection";
+import { DocumentacaoSection } from "@/components/faturamentos/DocumentacaoSection";
 
 // ── Visual helpers ──────────────────────────────────────────────────────────
 
@@ -117,7 +116,10 @@ export default async function FaturamentoDetailPage({
   const custosInternos = fat.faturamento_custos_internos ?? [];
   const fornecedores = fat.faturamento_fornecedores ?? [];
 
-  const valorFornecedores = fornecedores.reduce((s: number, f: { valor_total: number }) => s + (f.valor_total ?? 0), 0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const valorMidia      = fornecedores.filter((f: any) => f.fornecedor?.tipo === "midia").reduce((s: number, f: { valor_total: number }) => s + (f.valor_total ?? 0), 0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const valorProducao   = fornecedores.filter((f: any) => f.fornecedor?.tipo === "producao").reduce((s: number, f: { valor_total: number }) => s + (f.valor_total ?? 0), 0);
   const valorCustosInternos = custosInternos.reduce((s: number, c: { valor_total: number }) => s + (c.valor_total ?? 0), 0);
 
   // Get fornecedor_ids for the modal (to exclude already-added ones)
@@ -195,18 +197,33 @@ export default async function FaturamentoDetailPage({
         )}
       </div>
 
-      {/* Valores resumo */}
-      {(valorFornecedores > 0 || valorCustosInternos > 0) && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
-            <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Fornecedores</p>
-            <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(valorFornecedores)}</p>
-            <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{fornecedores.length} fornecedor(es)</p>
-          </div>
+      {/* Valores resumo — Custos Internos | Produção | Mídia | Total */}
+      {(valorMidia > 0 || valorProducao > 0 || valorCustosInternos > 0) && (
+        <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
             <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Custos Internos</p>
             <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(valorCustosInternos)}</p>
             <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{custosInternos.length} item(ns)</p>
+          </div>
+          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#7C3AED" }} />
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#94A3B8" }}>Produção</p>
+            </div>
+            <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(valorProducao)}</p>
+            <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
+              {fornecedores.filter((f: { fornecedor?: { tipo?: string } }) => f.fornecedor?.tipo === "producao").length} fornecedor(es)
+            </p>
+          </div>
+          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#2E60FF" }} />
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#94A3B8" }}>Mídia</p>
+            </div>
+            <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(valorMidia)}</p>
+            <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
+              {fornecedores.filter((f: { fornecedor?: { tipo?: string } }) => f.fornecedor?.tipo === "midia").length} fornecedor(es)
+            </p>
           </div>
           <div className="rounded-xl border p-4" style={{ borderColor: "#2E60FF", backgroundColor: "#EEF2FF" }}>
             <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#2E60FF" }}>Total</p>
@@ -215,30 +232,17 @@ export default async function FaturamentoDetailPage({
         </div>
       )}
 
-      {/* Custos Internos */}
-      {custosInternos.length > 0 && (
-        <CustosInternosSection itens={custosInternos} />
-      )}
-
-      {/* Fornecedores */}
+      {/* Documentação agrupada — Mídia, Produção, Custos Internos */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold" style={{ color: "#0F172A" }}>
-            Documentação de Fornecedores
-            {fornecedores.length > 0 && (
-              <span className="ml-2 text-xs font-normal" style={{ color: "#94A3B8" }}>
-                ({fornecedores.length})
-              </span>
-            )}
-          </h2>
+          <h2 className="text-sm font-semibold" style={{ color: "#0F172A" }}>Documentação</h2>
           <FaturamentoDetailClient
             faturamentoId={id}
             fornecedoresJaAdicionados={fornecedoresJaAdicionados}
           />
         </div>
-
         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <FornecedorDocumentosSection initialFFs={fornecedores as any} isRevisor={isRevisor} />
+        <DocumentacaoSection fornecedores={fornecedores as any} custosInternos={custosInternos} isRevisor={isRevisor} />
       </div>
     </div>
   );
