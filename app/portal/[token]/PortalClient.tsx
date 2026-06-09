@@ -116,10 +116,11 @@ function DocRow({
   ffId: string;
   faturamento: FaturamentoInfo;
   fornecedorTipo: string;
+  fornecedorNome: string;
   token: string;
   onUploaded: (docId: string, arquivos: Arquivo[]) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef      = useRef<HTMLInputElement>(null);
   const [staged,      setStaged]      = useState<StagedFile[]>([]);
   const [dragging,    setDragging]    = useState(false);
   const [uploading,   setUploading]   = useState(false);
@@ -190,10 +191,11 @@ function DocRow({
             fileContent,
             mimeType:    sf.file.type || "application/octet-stream",
             ano,
-            clienteNome: faturamento.cliente_nome  ?? "SEM_CLIENTE",
-            jobId:       faturamento.iclips_job_id ?? `FF-${ffId.slice(0, 6)}`,
-            campanha:    faturamento.nome_campanha  ?? "SEM_NOME",
+            clienteNome:    faturamento.cliente_nome  ?? "SEM_CLIENTE",
+            jobId:          faturamento.iclips_job_id ?? `FF-${ffId.slice(0, 6)}`,
+            campanha:       faturamento.nome_campanha  ?? "SEM_NOME",
             subpasta,
+            fornecedorNome: fornecedorNome,
           }),
         });
 
@@ -260,7 +262,7 @@ function DocRow({
     }, 800);
 
     setUploading(false);
-  }, [staged, ffId, doc.id, faturamento, fornecedorTipo, token, onUploaded]);
+  }, [staged, ffId, doc.id, faturamento, fornecedorTipo, fornecedorNome, token, onUploaded]);
 
   return (
     <div
@@ -589,6 +591,7 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
                 ffId={ff.id}
                 faturamento={ff.faturamento}
                 fornecedorTipo={ff.fornecedor.tipo}
+                fornecedorNome={ff.fornecedor.razao_social}
                 token={token}
                 onUploaded={handleUploaded}
               />
