@@ -57,6 +57,35 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// ── Prefixos por tipo de documento ───────────────────────────────────────────
+
+const PREFIXOS: Record<string, string> = {
+  nf:               "NF",
+  pi:               "PI",
+  evidencia:        "EV",
+  comprovacao:      "CV",
+  orcamento_1:      "OC",
+  orcamento_2:      "OC",
+  orcamento_3:      "OC",
+  tabela_orcamento: "OC",
+};
+
+/**
+ * Aplica prefixo ao nome do arquivo baseado no tipo do documento.
+ * - 1 arquivo total  → "NF_251(1).pdf"
+ * - 2+ arquivos      → "NF1_arquivo.pdf", "NF2_arquivo.pdf"...
+ *
+ * @param nomeOriginal  nome original do arquivo
+ * @param tipo          tipo do documento (ex: "nf", "evidencia")
+ * @param indice        posição 1-based deste arquivo no total
+ * @param total         total de arquivos (existentes + novos)
+ */
+function aplicarPrefixo(nomeOriginal: string, tipo: string, indice: number, total: number): string {
+  const prefixo = PREFIXOS[tipo] ?? tipo.replace(/_/g, "").toUpperCase().slice(0, 4);
+  const numero  = total > 1 ? String(indice) : "";
+  return `${prefixo}${numero}_${nomeOriginal}`;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Arquivo = {
@@ -171,8 +200,9 @@ function DocRow({
     const ano = new Date(faturamento.created_at).getFullYear();
 
     const uploaded: Arquivo[] = [];
+    const totalArquivos = existingFiles.length + toUpload.length;
 
-    for (const sf of toUpload) {
+    for (const [i, sf] of toUpload.entries()) {
       // Marca como "enviando"
       setStaged((prev) =>
         prev.map((f) => f.localId === sf.localId ? { ...f, status: "uploading" } : f)
@@ -182,13 +212,17 @@ function DocRow({
         // ── 1. Converte arquivo para base64 (no browser, sem limite) ──────────
         const fileContent = await fileToBase64(sf.file);
 
-        // ── 2. Envia direto para Google Drive via Apps Script ─────────────────
+        // ── 2. Aplica prefixo ao nome (ex: NF_251.pdf, EV1_video.mp4) ─────────
+        const indice      = existingFiles.length + i + 1;
+        const nomeArquivo = aplicarPrefixo(sf.file.name, doc.tipo, indice, totalArquivos);
+
+        // ── 3. Envia direto para Google Drive via Apps Script ─────────────────
         //      Content-Type: text/plain evita preflight CORS.
         const driveRes = await fetch(scriptUrl, {
           method:  "POST",
           headers: { "Content-Type": "text/plain" },
           body:    JSON.stringify({
-            fileName:    sf.file.name,
+            fileName:    nomeArquivo,
             fileContent,
             mimeType:    sf.file.type || "application/octet-stream",
             ano,
@@ -224,7 +258,7 @@ function DocRow({
           body:    JSON.stringify({
             documentoId: doc.id,
             viewUrl:     driveData.viewUrl,
-            fileName:    sf.file.name,
+            fileName:    nomeArquivo,
             fileSize:    sf.file.size,
             token,        // token do portal para autenticação server-side
           }),
