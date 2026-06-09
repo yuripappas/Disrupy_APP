@@ -80,12 +80,9 @@ export function parseIClipsXlsx(buffer: ArrayBuffer): IClipsProposta {
     status: s(dgData[3]),
   };
 
-  // ── Aba 2: Custos Internos ───────────────────────────────────────────────
-  // Cols: Código | Produto/Serviço | Formato | Serviço | Valor Agência | Valor Criação |
-  //        Valor Adaptação | Valor Finalização | Subtotal | Qtde | Desconto | Valor Cobrado | Valor Imposto | Total
+  // ── Aba 2: Custos Internos (opcional) ───────────────────────────────────
   const wsCI = wb.Sheets["Custos Internos"];
-  if (!wsCI) throw new Error("Aba 'Custos Internos' não encontrada.");
-  const ciRows = XLSX.utils.sheet_to_json<unknown[]>(wsCI, { header: 1 });
+  const ciRows = wsCI ? XLSX.utils.sheet_to_json<unknown[]>(wsCI, { header: 1 }) : [];
 
   const custos_internos: CustoInterno[] = [];
   for (let i = 1; i < ciRows.length; i++) {
@@ -112,12 +109,9 @@ export function parseIClipsXlsx(buffer: ArrayBuffer): IClipsProposta {
     });
   }
 
-  // ── Aba 3: Orçamentos — agrupar por Fornecedor ───────────────────────────
-  // Cols: Fornecedor | Peça | Formato | Serviço | Qtde | Valor Unitário |
-  //        Valor Cobrado | Honorário | Comissão forn. | Valor Imposto | Total | ...
+  // ── Aba 3: Orçamentos (opcional) — agrupar por Fornecedor ────────────────
   const wsOrc = wb.Sheets["Orçamentos"];
-  if (!wsOrc) throw new Error("Aba 'Orçamentos' não encontrada.");
-  const orcRows = XLSX.utils.sheet_to_json<unknown[]>(wsOrc, { header: 1 });
+  const orcRows = wsOrc ? XLSX.utils.sheet_to_json<unknown[]>(wsOrc, { header: 1 }) : [];
 
   const orcMap = new Map<string, OrcamentoGrupo>();
   for (let i = 1; i < orcRows.length; i++) {
@@ -142,11 +136,9 @@ export function parseIClipsXlsx(buffer: ArrayBuffer): IClipsProposta {
   }
   const orcamentos = Array.from(orcMap.values());
 
-  // ── Aba 4: Mídias — agrupar por Veículo ─────────────────────────────────
-  // Cols: Código | Tipo de Mídia | Veículo | Praça | Data | Valor da Mídia
+  // ── Aba 4: Mídias (opcional) — agrupar por Veículo ──────────────────────
   const wsMid = wb.Sheets["Mídias"];
-  if (!wsMid) throw new Error("Aba 'Mídias' não encontrada.");
-  const midRows = XLSX.utils.sheet_to_json<unknown[]>(wsMid, { header: 1 });
+  const midRows = wsMid ? XLSX.utils.sheet_to_json<unknown[]>(wsMid, { header: 1 }) : [];
 
   const midMap = new Map<string, MidiaGrupo>();
   for (let i = 1; i < midRows.length; i++) {

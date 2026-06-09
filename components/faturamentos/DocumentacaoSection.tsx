@@ -4,8 +4,10 @@ import { useState, useCallback } from "react";
 import {
   ChevronDown, ChevronUp, FileText, ExternalLink,
   CheckCircle, XCircle, Clock, Check, X, Loader2,
-  Copy, Link2, AlertTriangle,
+  Copy, Link2, AlertTriangle, Search,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { normalizeName } from "@/lib/iclips/parser";
 import { formatCurrency } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -19,6 +21,21 @@ type Documento = {
   reprovacao_motivo: string | null;
 };
 
+type DbFornecedorSimple = {
+  id: string;
+  razao_social: string;
+  cnpj: string;
+  tipo: string;
+  contato_nome: string | null;
+};
+
+type FornecedorEmbed = {
+  razao_social: string;
+  cnpj: string;
+  tipo: string;
+  contato_nome: string | null;
+};
+
 type FF = {
   id: string;
   valor: number;
@@ -27,7 +44,11 @@ type FF = {
   prazo_dias: number;
   status: string;
   link_token: string | null;
-  fornecedor: { razao_social: string; cnpj: string; tipo: string; contato_nome: string | null };
+  // campos de pendência (adicionados pela feature de fornecedores não associados)
+  nome_iclips: string | null;
+  associado: boolean | null;
+  tipo_iclips: string | null;
+  fornecedor: FornecedorEmbed | null;
   documentos: Documento[];
 };
 
@@ -56,6 +77,10 @@ const ffStatusCfg: Record<string, { label: string; color: string }> = {
   aprovado:   { label: "Aprovado",   color: "#2E60FF" },
   reprovado:  { label: "Reprovado",  color: "#DC2626" },
 };
+
+function isFfPending(ff: FF): boolean {
+  return ff.associado === false;
+}
 
 // ── DocRow ───────────────────────────────────────────────────────────────────
 
@@ -158,7 +183,7 @@ function DocRow({
   );
 }
 
-// ── FornecedorCard ───────────────────────────────────────────────────────────
+// ── FornecedorCard (fornecedor já associado) ─────────────────────────────────
 
 function FornecedorCard({
   ff, isRevisor, onDocAction,
@@ -168,6 +193,7 @@ function FornecedorCard({
   onDocAction: (ffId: string, docId: string, acao: "aprovar" | "reprovar", motivo?: string) => Promise<void>;
 }) {
   const [copied, setCopied] = useState(false);
+  const fornecedor = ff.fornecedor!;
   const completos = ff.documentos.filter((d) => d.status === "aprovado" || d.status === "enviado").length;
   const total     = ff.documentos.length;
   const pct       = total > 0 ? Math.round((completos / total) * 100) : 0;
@@ -190,9 +216,9 @@ function FornecedorCard({
               {stCfg.label}
             </span>
           </div>
-          <h4 className="font-semibold text-sm" style={{ color: "#0F172A" }}>{ff.fornecedor.razao_social}</h4>
+          <h4 className="font-semibold text-sm" style={{ color: "#0F172A" }}>{fornecedor.razao_social}</h4>
           <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-            {ff.fornecedor.cnpj}{ff.fornecedor.contato_nome ? ` · ${ff.fornecedor.contato_nome}` : ""}
+            {fornecedor.cnpj}{fornecedor.contato_nome ? ` · ${fornecedor.contato_nome}` : ""}
           </p>
         </div>
         <div className="text-right">
@@ -241,16 +267,192 @@ function FornecedorCard({
   );
 }
 
-// ── Group header ─────────────────────────────────────────────────────────────
+// ── PendingFornecedorCard (fornecedor sem associação) ─────────────────────────
+
+function PendingFornecedorCard({
+  ff,
+  onAssociated,
+}: {
+  ff: FF;
+  onAssociated: (ffId: string, fornecedor: FornecedorEmbed) => void;
+}) {
+  type Mode = "idle" | "search" | "loading";
+  const [mode, setMode] = useState<Mode>("idle");
+  const [busca, setBusca] = useState("");
+  const [dbFornecedores, setDbFornecedores] = useState<DbFornecedorSimple[]>([]);
+  const [dbLoaded, setDbLoaded] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function iniciarAssociar() {
+    if (!dbLoaded) {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("fornecedores")
+        .select("id, razao_social, cnpj, tipo, contato_nome")
+        .eq("ativo", true)
+        .order("razao_social");
+      setDbFornecedores((data ?? []) as DbFornecedorSimple[]);
+      setDbLoaded(true);
+    }
+    setMode("search");
+    setBusca("");
+    setErro("");
+  }
+
+  async function handleAssociar(forn: DbFornecedorSimple) {
+    setMode("loading");
+    setErro("");
+    const res = await fetch("/api/faturamento-fornecedores", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ffId: ff.id, fornecedorId: forn.id }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setErro(j.error ?? "Erro ao associar");
+      setMode("search");
+      return;
+    }
+    onAssociated(ff.id, {
+      razao_social: forn.razao_social,
+      cnpj: forn.cnpj,
+      tipo: forn.tipo,
+      contato_nome: forn.contato_nome,
+    });
+  }
+
+  const filtrados = busca
+    ? dbFornecedores.filter((f) =>
+        normalizeName(f.razao_social).includes(normalizeName(busca))
+      )
+    : dbFornecedores;
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden mb-3"
+      style={{
+        border: "2px dashed #F59E0B",
+        backgroundColor: "#FFFBEB",
+      }}
+    >
+      {/* Header do card pendente */}
+      <div className="flex items-start justify-between px-5 py-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span
+              className="flex items-center gap-1 text-xs font-medium px-2.5 py-0.5 rounded-full"
+              style={{ backgroundColor: "#FEF3C7", color: "#D97706" }}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              Pendente de associação
+            </span>
+          </div>
+          <h4 className="font-semibold text-sm" style={{ color: "#0F172A" }}>
+            {ff.nome_iclips ?? "Fornecedor desconhecido"}
+          </h4>
+          <p className="text-xs mt-0.5" style={{ color: "#78716C" }}>
+            Importado do iClips · sem cadastro associado
+          </p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(ff.valor_total)}</p>
+          <p className="text-xs" style={{ color: "#94A3B8" }}>
+            {formatCurrency(ff.valor)} + hon. {formatCurrency(ff.honorarios ?? 0)}
+          </p>
+        </div>
+      </div>
+
+      {/* UI de associação */}
+      <div className="px-5 pb-4">
+        {mode === "idle" && (
+          <button
+            onClick={iniciarAssociar}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-amber-100"
+            style={{ borderColor: "#F59E0B", color: "#92400E", backgroundColor: "#FEF3C7" }}
+          >
+            <Link2 className="w-3 h-3" />
+            Associar a fornecedor do cadastro
+          </button>
+        )}
+
+        {mode === "loading" && (
+          <div className="flex items-center gap-2 text-xs" style={{ color: "#64748B" }}>
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Associando...
+          </div>
+        )}
+
+        {mode === "search" && (
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3" style={{ color: "#94A3B8" }} />
+              <input
+                autoFocus
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar fornecedor no cadastro..."
+                className="w-full pl-7 pr-3 py-1.5 text-xs rounded-lg border outline-none bg-white"
+                style={{ borderColor: "#F59E0B", color: "#334155" }}
+              />
+            </div>
+            <div
+              className="border rounded-lg overflow-y-auto bg-white"
+              style={{ borderColor: "#E2E8F0", maxHeight: "160px" }}
+            >
+              {filtrados.length === 0 ? (
+                <p className="px-3 py-2 text-xs" style={{ color: "#94A3B8" }}>
+                  {dbLoaded ? "Nenhum resultado" : "Carregando..."}
+                </p>
+              ) : (
+                filtrados.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => handleAssociar(f)}
+                    className="w-full text-left px-3 py-2 text-xs hover:bg-amber-50 transition-colors flex items-center justify-between"
+                    style={{ borderBottom: "1px solid #F1F5F9" }}
+                  >
+                    <span className="font-medium" style={{ color: "#0F172A" }}>{f.razao_social}</span>
+                    <span
+                      className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 ml-2"
+                      style={{
+                        backgroundColor: f.tipo === "midia" ? "#EEF2FF" : "#F5F3FF",
+                        color: f.tipo === "midia" ? "#00246D" : "#7C3AED",
+                      }}
+                    >
+                      {f.tipo === "midia" ? "Mídia" : "Produção"}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+            {erro && <p className="text-xs" style={{ color: "#DC2626" }}>{erro}</p>}
+            <button
+              type="button"
+              onClick={() => setMode("idle")}
+              className="text-xs hover:underline"
+              style={{ color: "#94A3B8" }}
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── GroupSection ─────────────────────────────────────────────────────────────
 
 function GroupSection({
-  title, accentColor, accentBg, count, total, children, defaultOpen = false,
+  title, accentColor, accentBg, count, total, pendingCount = 0, children, defaultOpen = false,
 }: {
   title: string;
   accentColor: string;
   accentBg: string;
   count: number;
   total: number;
+  pendingCount?: number;
   children: React.ReactNode;
   defaultOpen?: boolean;
 }) {
@@ -263,15 +465,26 @@ function GroupSection({
         className="w-full flex items-center justify-between px-6 py-4 transition-colors hover:bg-slate-50"
         style={{ borderBottom: aberto ? "1px solid #E2E8F0" : "none" }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
           <span className="text-sm font-semibold" style={{ color: "#0F172A" }}>{title}</span>
-          <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-            style={{ backgroundColor: accentBg, color: accentColor }}>
+          <span
+            className="text-xs px-2 py-0.5 rounded-full font-medium"
+            style={{ backgroundColor: accentBg, color: accentColor }}
+          >
             {count} {count === 1 ? "item" : "itens"}
           </span>
+          {pendingCount > 0 && (
+            <span
+              className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold"
+              style={{ backgroundColor: "#FEF3C7", color: "#D97706" }}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              {pendingCount} sem associação
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
           <span className="text-sm font-bold" style={{ color: "#0F172A" }}>{formatCurrency(total)}</span>
           {aberto
             ? <ChevronUp  className="w-4 h-4" style={{ color: "#94A3B8" }} />
@@ -296,6 +509,7 @@ export function DocumentacaoSection({
 }) {
   const [ffs, setFFs] = useState<FF[]>(fornecedores);
 
+  // Atualiza documento após aprovação/reprovação
   const handleDocAction = useCallback(async (
     ffId: string, docId: string, acao: "aprovar" | "reprovar", motivo?: string,
   ) => {
@@ -319,8 +533,19 @@ export function DocumentacaoSection({
     ));
   }, []);
 
-  const midia    = ffs.filter((f) => f.fornecedor.tipo === "midia");
-  const producao = ffs.filter((f) => f.fornecedor.tipo === "producao");
+  // Transforma fornecedor pendente em associado após associação
+  const handleAssociated = useCallback((ffId: string, fornecedor: FornecedorEmbed) => {
+    setFFs((prev) => prev.map((ff) =>
+      ff.id !== ffId ? ff : { ...ff, associado: true, fornecedor }
+    ));
+  }, []);
+
+  // Grupos: inclui tanto fornecedores associados quanto pendentes pelo tipo_iclips
+  const midia    = ffs.filter((f) => f.fornecedor?.tipo === "midia"    || (f.associado === false && f.tipo_iclips === "midia"));
+  const producao = ffs.filter((f) => f.fornecedor?.tipo === "producao" || (f.associado === false && f.tipo_iclips === "producao"));
+
+  const midiasPendentes   = midia.filter(isFfPending).length;
+  const producaoPendentes = producao.filter(isFfPending).length;
 
   const totalMidia    = midia.reduce((s, f) => s + (f.valor_total ?? 0), 0);
   const totalProducao = producao.reduce((s, f) => s + (f.valor_total ?? 0), 0);
@@ -341,28 +566,42 @@ export function DocumentacaoSection({
     <div>
       {/* Mídia */}
       {midia.length > 0 && (
-        <GroupSection title="Mídia" accentColor="#2E60FF" accentBg="#EEF2FF"
-          count={midia.length} total={totalMidia}>
-          {midia.map((ff) => (
-            <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} onDocAction={handleDocAction} />
-          ))}
+        <GroupSection
+          title="Mídia" accentColor="#2E60FF" accentBg="#EEF2FF"
+          count={midia.length} total={totalMidia} pendingCount={midiasPendentes}
+        >
+          {midia.map((ff) =>
+            isFfPending(ff) ? (
+              <PendingFornecedorCard key={ff.id} ff={ff} onAssociated={handleAssociated} />
+            ) : (
+              <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} onDocAction={handleDocAction} />
+            )
+          )}
         </GroupSection>
       )}
 
       {/* Produção */}
       {producao.length > 0 && (
-        <GroupSection title="Produção" accentColor="#7C3AED" accentBg="#F5F3FF"
-          count={producao.length} total={totalProducao}>
-          {producao.map((ff) => (
-            <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} onDocAction={handleDocAction} />
-          ))}
+        <GroupSection
+          title="Produção" accentColor="#7C3AED" accentBg="#F5F3FF"
+          count={producao.length} total={totalProducao} pendingCount={producaoPendentes}
+        >
+          {producao.map((ff) =>
+            isFfPending(ff) ? (
+              <PendingFornecedorCard key={ff.id} ff={ff} onAssociated={handleAssociated} />
+            ) : (
+              <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} onDocAction={handleDocAction} />
+            )
+          )}
         </GroupSection>
       )}
 
       {/* Custos Internos */}
       {custosInternos.length > 0 && (
-        <GroupSection title="Custos Internos" accentColor="#64748B" accentBg="#F1F5F9"
-          count={custosInternos.length} total={totalCustos}>
+        <GroupSection
+          title="Custos Internos" accentColor="#64748B" accentBg="#F1F5F9"
+          count={custosInternos.length} total={totalCustos}
+        >
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#E2E8F0" }}>
             <table className="w-full text-sm">
               <thead>

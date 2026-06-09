@@ -103,6 +103,7 @@ export default async function FaturamentoDetailPage({
       faturamento_custos_internos ( id, codigo, servico, qtde, valor_unitario, valor_total ),
       faturamento_fornecedores (
         id, valor, honorarios, valor_total, prazo_dias, status, link_token,
+        nome_iclips, associado, tipo_iclips,
         fornecedor:fornecedores ( razao_social, cnpj, tipo, contato_nome ),
         documentos ( id, tipo, label, status, arquivo_url, reprovacao_motivo )
       )
@@ -117,9 +118,9 @@ export default async function FaturamentoDetailPage({
   const fornecedores = fat.faturamento_fornecedores ?? [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const valorMidia      = fornecedores.filter((f: any) => f.fornecedor?.tipo === "midia").reduce((s: number, f: { valor_total: number }) => s + (f.valor_total ?? 0), 0);
+  const valorMidia      = fornecedores.filter((f: any) => f.fornecedor?.tipo === "midia"    || (f.associado === false && f.tipo_iclips === "midia")).reduce((s: number, f: { valor_total: number }) => s + (f.valor_total ?? 0), 0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const valorProducao   = fornecedores.filter((f: any) => f.fornecedor?.tipo === "producao").reduce((s: number, f: { valor_total: number }) => s + (f.valor_total ?? 0), 0);
+  const valorProducao   = fornecedores.filter((f: any) => f.fornecedor?.tipo === "producao" || (f.associado === false && f.tipo_iclips === "producao")).reduce((s: number, f: { valor_total: number }) => s + (f.valor_total ?? 0), 0);
   const valorCustosInternos = custosInternos.reduce((s: number, c: { valor_total: number }) => s + (c.valor_total ?? 0), 0);
 
   // Get fornecedor_ids for the modal (to exclude already-added ones)
@@ -212,7 +213,8 @@ export default async function FaturamentoDetailPage({
             </div>
             <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(valorProducao)}</p>
             <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-              {fornecedores.filter((f: { fornecedor?: { tipo?: string } }) => f.fornecedor?.tipo === "producao").length} fornecedor(es)
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {fornecedores.filter((f: any) => f.fornecedor?.tipo === "producao" || (f.associado === false && f.tipo_iclips === "producao")).length} fornecedor(es)
             </p>
           </div>
           <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
@@ -222,7 +224,8 @@ export default async function FaturamentoDetailPage({
             </div>
             <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(valorMidia)}</p>
             <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-              {fornecedores.filter((f: { fornecedor?: { tipo?: string } }) => f.fornecedor?.tipo === "midia").length} fornecedor(es)
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {fornecedores.filter((f: any) => f.fornecedor?.tipo === "midia" || (f.associado === false && f.tipo_iclips === "midia")).length} fornecedor(es)
             </p>
           </div>
           <div className="rounded-xl border p-4" style={{ borderColor: "#2E60FF", backgroundColor: "#EEF2FF" }}>

@@ -355,7 +355,8 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
     setStep(2);
 
     const supabase = createClient();
-    const totalForn = fornecedoresMatch.filter((f) => f.fornecedor_id).reduce((s, f) => s + f.valor_total_editavel, 0);
+    // Inclui todos — matched e unmatched — no valor total
+    const totalForn = fornecedoresMatch.reduce((s, f) => s + f.valor_total_editavel, 0);
     const totalCI   = proposta.custos_internos.reduce((s, c) => s + c.valor_total, 0);
 
     const { data: fat, error: fatErr } = await supabase
@@ -401,9 +402,17 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
       );
     }
 
-    for (const f of fornecedoresMatch.filter((f) => f.fornecedor_id)) {
+    // Salva TODOS os fornecedores — matched e unmatched
+    // Unmatched ficam com fornecedor_id null, associado false, nome_iclips preenchido
+    for (const f of fornecedoresMatch) {
+      const nomeIclips = getNome(f);
+      const tipoIclips = f.kind === "midia" ? "midia" : "producao";
       const { data: ff } = await supabase.from("faturamento_fornecedores").insert({
-        faturamento_id: fat.id, fornecedor_id: f.fornecedor_id,
+        faturamento_id: fat.id,
+        fornecedor_id: f.fornecedor_id ?? null,
+        nome_iclips: !f.fornecedor_id ? nomeIclips : null,
+        associado: !!f.fornecedor_id,
+        tipo_iclips: tipoIclips,
         valor: f.valor, honorarios: f.honorarios_editavel, valor_total: f.valor_total_editavel,
         prazo_dias: parseInt(prazo) || 5, status: "aguardando",
       }).select().single();
@@ -516,7 +525,7 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
                   <div className="flex items-center gap-2 pt-2 border-t text-xs" style={{ borderColor: "#F1F5F9" }}>
                     <AlertTriangle className="w-3.5 h-3.5" style={{ color: "#D97706" }} />
                     <span style={{ color: "#92400E" }}>
-                      <strong>{naoResolvidos.length}</strong> fornecedor(es) ainda não vinculado(s) — resolva abaixo ou serão ignorados
+                      <strong>{naoResolvidos.length}</strong> fornecedor(es) ainda não vinculado(s) — serão salvos como pendentes e poderão ser associados depois
                     </span>
                   </div>
                 )}
