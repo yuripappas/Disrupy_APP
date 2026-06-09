@@ -15,7 +15,7 @@ export default async function PortalPage({
     .select(
       `id, status, prazo_dias, valor_total, link_token,
        fornecedor:fornecedores (razao_social, cnpj, tipo, contato_nome),
-       faturamento:faturamentos (nome_campanha, cliente_nome, cliente_tipo),
+       faturamento:faturamentos (nome_campanha, cliente_nome, cliente_tipo, iclips_job_id, created_at),
        documentos (id, tipo, label, status, arquivo_url, reprovacao_motivo,
          documento_arquivos (id, arquivo_url, nome_arquivo, tamanho_bytes, created_at))`
     )

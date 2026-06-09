@@ -33,12 +33,28 @@ function formatBytes(b: number): string {
 function fileIcon(name: string) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   if (["mp4", "mov", "avi", "mkv", "webm"].includes(ext))
-    return <Film className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#7C3AED" }} />;
+    return <Film    className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#7C3AED" }} />;
   if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext))
-    return <Image className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#059669" }} />;
+    return <Image   className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#059669" }} />;
   if (["zip", "rar", "7z"].includes(ext))
     return <Archive className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#D97706" }} />;
-  return <FileText className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#64748B" }} />;
+  return   <FileText className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#64748B" }} />;
+}
+
+/**
+ * Converte um File em string base64 (sem o prefixo "data:...;base64,").
+ * Executado inteiramente no browser — sem limite de tamanho do servidor.
+ */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1]); // remove "data:<mime>;base64,"
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -68,13 +84,21 @@ type Documento = {
   documento_arquivos: Arquivo[];
 };
 
+type FaturamentoInfo = {
+  nome_campanha: string;
+  cliente_nome: string;
+  cliente_tipo: string;
+  iclips_job_id: string | null;
+  created_at: string;
+};
+
 type FF = {
   id: string;
   status: string;
   prazo_dias: number;
   valor_total: number;
   fornecedor: { razao_social: string; cnpj: string | null; tipo: string; contato_nome: string | null };
-  faturamento: { nome_campanha: string; cliente_nome: string; cliente_tipo: string };
+  faturamento: FaturamentoInfo;
   documentos: Documento[];
 };
 
@@ -83,32 +107,37 @@ type FF = {
 function DocRow({
   doc,
   ffId,
+  faturamento,
+  fornecedorTipo,
+  token,
   onUploaded,
 }: {
   doc: Documento;
   ffId: string;
+  faturamento: FaturamentoInfo;
+  fornecedorTipo: string;
+  token: string;
   onUploaded: (docId: string, arquivos: Arquivo[]) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [staged, setStaged] = useState<StagedFile[]>([]);
-  const [dragging, setDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [staged,      setStaged]      = useState<StagedFile[]>([]);
+  const [dragging,    setDragging]    = useState(false);
+  const [uploading,   setUploading]   = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
-  const cfg = docStatusConfig[doc.status] ?? docStatusConfig.pendente;
+  const cfg           = docStatusConfig[doc.status] ?? docStatusConfig.pendente;
   const existingFiles = doc.documento_arquivos ?? [];
-  const canUpload = doc.status !== "aprovado";
+  const canUpload     = doc.status !== "aprovado";
   const pendingStaged = staged.filter((f) => f.status === "pending");
 
   function addFiles(fileList: FileList | File[]) {
-    const arr = Array.from(fileList);
     setGlobalError(null);
     setStaged((prev) => [
       ...prev,
-      ...arr.map((f) => ({
+      ...Array.from(fileList).map((f) => ({
         localId: Math.random().toString(36).slice(2),
-        file: f,
-        status: "pending" as const,
+        file:    f,
+        status:  "pending" as const,
       })),
     ]);
   }
@@ -120,78 +149,89 @@ function DocRow({
   const handleUploadAll = useCallback(async () => {
     const toUpload = staged.filter((f) => f.status === "pending");
     if (toUpload.length === 0) return;
+
     setUploading(true);
     setGlobalError(null);
+
+    const scriptUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL;
+    if (!scriptUrl) {
+      setGlobalError("Serviço de upload não configurado. Contacte a Disrupy.");
+      setUploading(false);
+      return;
+    }
+
+    // Subpasta no Drive depende do tipo do fornecedor
+    const subpasta =
+      fornecedorTipo === "midia"    ? "PI"        :
+      fornecedorTipo === "producao" ? "OS"        :
+                                      "CUSTO INTERNO";
+
+    const ano = new Date(faturamento.created_at).getFullYear();
 
     const uploaded: Arquivo[] = [];
 
     for (const sf of toUpload) {
-      // 1. Marca como enviando
+      // Marca como "enviando"
       setStaged((prev) =>
         prev.map((f) => f.localId === sf.localId ? { ...f, status: "uploading" } : f)
       );
 
       try {
-        // 2. Solicita sessão de upload resumível ao servidor
-        const initRes = await fetch("/api/drive/init-upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            documentoId: doc.id,
-            ffId,
-            filename:  sf.file.name,
-            mimeType:  sf.file.type || "application/octet-stream",
-            fileSize:  sf.file.size,
+        // ── 1. Converte arquivo para base64 (no browser, sem limite) ──────────
+        const fileContent = await fileToBase64(sf.file);
+
+        // ── 2. Envia direto para Google Drive via Apps Script ─────────────────
+        //      Content-Type: text/plain evita preflight CORS.
+        const driveRes = await fetch(scriptUrl, {
+          method:  "POST",
+          headers: { "Content-Type": "text/plain" },
+          body:    JSON.stringify({
+            fileName:    sf.file.name,
+            fileContent,
+            mimeType:    sf.file.type || "application/octet-stream",
+            ano,
+            clienteNome: faturamento.cliente_nome  ?? "SEM_CLIENTE",
+            jobId:       faturamento.iclips_job_id ?? `FF-${ffId.slice(0, 6)}`,
+            campanha:    faturamento.nome_campanha  ?? "SEM_NOME",
+            subpasta,
           }),
         });
 
-        if (!initRes.ok) {
-          const err = await initRes.json().catch(() => ({}));
-          throw new Error(err.error ?? "Erro ao iniciar upload");
+        if (!driveRes.ok) {
+          throw new Error(`Falha no servidor de upload (HTTP ${driveRes.status})`);
         }
 
-        const { uploadUrl } = await initRes.json() as { uploadUrl: string };
+        const driveData = await driveRes.json() as {
+          ok: boolean;
+          viewUrl?: string;
+          fileId?:  string;
+          pasta?:   string;
+          error?:   string;
+        };
 
-        // 3. Upload direto para o Google Drive (sem passar pelo Vercel)
-        //    Isso evita qualquer limite de tamanho de arquivo.
-        const putRes = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: {
-            "Content-Type":   sf.file.type || "application/octet-stream",
-            "Content-Length": String(sf.file.size),
-          },
-          body: sf.file,
-        });
-
-        if (!putRes.ok && putRes.status !== 200 && putRes.status !== 201) {
-          throw new Error(`Google Drive: status ${putRes.status}`);
+        if (!driveData.ok || !driveData.viewUrl) {
+          throw new Error(driveData.error ?? "Apps Script não retornou URL do arquivo");
         }
 
-        // 4. Extrai o file ID da resposta do Drive
-        const driveData = await putRes.json().catch(() => null) as { id?: string } | null;
-        const driveFileId = driveData?.id;
-
-        if (!driveFileId) throw new Error("Drive não retornou ID do arquivo");
-
-        // 5. Confirma no servidor: publica, salva em documento_arquivos e atualiza status
-        const confirmRes = await fetch("/api/drive/confirm-upload", {
-          method: "POST",
+        // ── 3. Persiste referência no banco (server-side, via portal token) ───
+        const saveRes = await fetch("/api/drive/salvar-arquivo", {
+          method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            driveFileId,
+          body:    JSON.stringify({
             documentoId: doc.id,
-            ffId,
-            filename:  sf.file.name,
-            fileSize:  sf.file.size,
+            viewUrl:     driveData.viewUrl,
+            fileName:    sf.file.name,
+            fileSize:    sf.file.size,
+            token,        // token do portal para autenticação server-side
           }),
         });
 
-        if (!confirmRes.ok) {
-          const err = await confirmRes.json().catch(() => ({}));
-          throw new Error(err.error ?? "Erro ao confirmar upload");
+        if (!saveRes.ok) {
+          const err = await saveRes.json().catch(() => ({})) as { error?: string };
+          throw new Error(err.error ?? "Erro ao registrar arquivo no banco");
         }
 
-        const { arquivo } = await confirmRes.json() as { arquivo: Arquivo };
+        const { arquivo } = await saveRes.json() as { arquivo: Arquivo };
         uploaded.push(arquivo);
 
         setStaged((prev) =>
@@ -214,13 +254,13 @@ function DocRow({
       onUploaded(doc.id, uploaded);
     }
 
-    // Remove os enviados com sucesso da staging area após 1s
+    // Remove os enviados com sucesso da staging area após 800ms
     setTimeout(() => {
       setStaged((prev) => prev.filter((f) => f.status === "error"));
     }, 800);
 
     setUploading(false);
-  }, [staged, ffId, doc.id, onUploaded]);
+  }, [staged, ffId, doc.id, faturamento, fornecedorTipo, token, onUploaded]);
 
   return (
     <div
@@ -275,7 +315,7 @@ function DocRow({
               key={arq.id}
               className="flex items-center gap-2.5 px-3 py-2.5"
               style={{
-                borderTop: i > 0 ? "1px solid #F1F5F9" : undefined,
+                borderTop:       i > 0 ? "1px solid #F1F5F9" : undefined,
                 backgroundColor: "#F8FAFC",
               }}
             >
@@ -328,15 +368,12 @@ function DocRow({
             onClick={() => !uploading && inputRef.current?.click()}
             className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-lg border-2 border-dashed transition-colors"
             style={{
-              borderColor: dragging ? "#2E60FF" : "#CBD5E1",
+              borderColor:     dragging ? "#2E60FF" : "#CBD5E1",
               backgroundColor: dragging ? "#EEF2FF" : "#F8FAFC",
-              cursor: uploading ? "not-allowed" : "pointer",
+              cursor:          uploading ? "not-allowed" : "pointer",
             }}
           >
-            <Upload
-              className="w-5 h-5"
-              style={{ color: dragging ? "#2E60FF" : "#94A3B8" }}
-            />
+            <Upload className="w-5 h-5" style={{ color: dragging ? "#2E60FF" : "#94A3B8" }} />
             <p className="text-xs font-medium" style={{ color: dragging ? "#2E60FF" : "#64748B" }}>
               {existingFiles.length > 0
                 ? "Adicionar mais arquivos"
@@ -355,7 +392,7 @@ function DocRow({
                   key={sf.localId}
                   className="flex items-center gap-2.5 px-3 py-2.5"
                   style={{
-                    borderTop: i > 0 ? "1px solid #F1F5F9" : undefined,
+                    borderTop:       i > 0 ? "1px solid #F1F5F9" : undefined,
                     backgroundColor:
                       sf.status === "error"     ? "#FEF2F2" :
                       sf.status === "done"      ? "#F0FDF4" :
@@ -364,19 +401,17 @@ function DocRow({
                   }}
                 >
                   {sf.status === "uploading" ? (
-                    <Loader2 className="w-3.5 h-3.5 flex-shrink-0 animate-spin" style={{ color: "#2E60FF" }} />
+                    <Loader2      className="w-3.5 h-3.5 flex-shrink-0 animate-spin" style={{ color: "#2E60FF" }} />
                   ) : sf.status === "done" ? (
-                    <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#059669" }} />
+                    <CheckCircle  className="w-3.5 h-3.5 flex-shrink-0"              style={{ color: "#059669" }} />
                   ) : sf.status === "error" ? (
-                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#DC2626" }} />
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0"             style={{ color: "#DC2626" }} />
                   ) : (
                     fileIcon(sf.file.name)
                   )}
                   <span
                     className="text-xs truncate flex-1"
-                    style={{
-                      color: sf.status === "error" ? "#991B1B" : "#334155",
-                    }}
+                    style={{ color: sf.status === "error" ? "#991B1B" : "#334155" }}
                   >
                     {sf.file.name}
                     {sf.errorMsg && (
@@ -415,7 +450,7 @@ function DocRow({
           {uploading && (
             <div className="flex items-center justify-center gap-2 py-2 text-xs" style={{ color: "#64748B" }}>
               <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#2E60FF" }} />
-              Enviando arquivos, aguarde…
+              Enviando para o Google Drive, aguarde…
             </div>
           )}
 
@@ -447,8 +482,8 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
           ? d
           : {
               ...d,
-              status: "enviado",
-              arquivo_url: arquivos[0]?.arquivo_url ?? d.arquivo_url,
+              status:             "enviado",
+              arquivo_url:        arquivos[0]?.arquivo_url ?? d.arquivo_url,
               documento_arquivos: [...(d.documento_arquivos ?? []), ...arquivos],
             }
       )
@@ -486,8 +521,8 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
           <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>
             {clienteTipoLabel[ff.faturamento.cliente_tipo] ?? ff.faturamento.cliente_tipo}
           </p>
-          <h1 className="text-base font-bold" style={{ color: "#0F172A" }}>{ff.faturamento.nome_campanha}</h1>
-          <p className="text-sm mt-0.5" style={{ color: "#64748B" }}>{ff.faturamento.cliente_nome}</p>
+          <h1 className="text-base font-bold"  style={{ color: "#0F172A" }}>{ff.faturamento.nome_campanha}</h1>
+          <p className="text-sm mt-0.5"         style={{ color: "#64748B" }}>{ff.faturamento.cliente_nome}</p>
         </div>
 
         {/* Fornecedor */}
@@ -500,9 +535,13 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
               {ff.fornecedor.tipo === "midia" ? "MÍD" : "PRD"}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate" style={{ color: "#0F172A" }}>{ff.fornecedor.razao_social}</p>
+              <p className="text-sm font-semibold truncate" style={{ color: "#0F172A" }}>
+                {ff.fornecedor.razao_social}
+              </p>
               {ff.fornecedor.cnpj && (
-                <p className="text-xs font-mono mt-0.5" style={{ color: "#94A3B8" }}>{ff.fornecedor.cnpj}</p>
+                <p className="text-xs font-mono mt-0.5" style={{ color: "#94A3B8" }}>
+                  {ff.fornecedor.cnpj}
+                </p>
               )}
             </div>
           </div>
@@ -530,7 +569,8 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
           </div>
           {!allDone && (
             <p className="text-xs mt-2" style={{ color: "#94A3B8" }}>
-              Envie os documentos abaixo. Você pode enviar vários arquivos por item — PDF, vídeos, imagens e qualquer outro formato são aceitos.
+              Envie os documentos abaixo. Você pode enviar vários arquivos por item —
+              PDF, vídeos, imagens e qualquer outro formato são aceitos.
             </p>
           )}
         </div>
@@ -543,7 +583,15 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
               return (order[a.status as keyof typeof order] ?? 1) - (order[b.status as keyof typeof order] ?? 1);
             })
             .map((doc) => (
-              <DocRow key={doc.id} doc={doc} ffId={ff.id} onUploaded={handleUploaded} />
+              <DocRow
+                key={doc.id}
+                doc={doc}
+                ffId={ff.id}
+                faturamento={ff.faturamento}
+                fornecedorTipo={ff.fornecedor.tipo}
+                token={token}
+                onUploaded={handleUploaded}
+              />
             ))}
         </div>
 
