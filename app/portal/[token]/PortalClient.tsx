@@ -68,6 +68,8 @@ const PREFIXOS: Record<string, string> = {
   orcamento_2:      "OC",
   orcamento_3:      "OC",
   tabela_orcamento: "OC",
+  espelho:          "ES",
+  proposta:         "OS",
 };
 
 /**
