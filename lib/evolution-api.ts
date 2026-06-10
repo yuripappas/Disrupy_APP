@@ -44,8 +44,14 @@ export async function obterQrCode(instanceName: string): Promise<string | null> 
   });
   if (!res.ok) return null;
   const data = await res.json();
-  // Evolution API v2 retorna { base64: "data:image/png;base64,..." }
-  return data.base64 ?? data.qrcode?.base64 ?? null;
+  // Cobre múltiplos formatos de resposta da Evolution API v1/v2
+  return (
+    data.base64           ??   // v2: { base64: "data:image/png;..." }
+    data.qrcode?.base64   ??   // v2 create response
+    data.qr?.base64       ??   // variante
+    data.pairingCode      ??   // fallback pairing code
+    null
+  );
 }
 
 // ── Estado da conexão ──────────────────────────────────────────────────────────

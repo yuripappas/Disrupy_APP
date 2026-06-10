@@ -56,20 +56,37 @@ export async function POST() {
 
   // Verifica se instância já existe
   const instancias = await listarInstancias();
-  const existe = instancias.some(i => i.instanceName === INSTANCE_NAME);
+  const instanciaExistente = instancias.find(i => i.instanceName === INSTANCE_NAME);
 
-  // Cria se não existir
-  if (!existe) {
-    await criarInstancia(INSTANCE_NAME);
+  // Se já está conectada, retorna sem QR
+  if (instanciaExistente?.state === 'open') {
+    return NextResponse.json({ instanceName: INSTANCE_NAME, qrCode: null, jaConectado: true });
   }
 
-  // Obtém QR code
-  const qrCode = await obterQrCode(INSTANCE_NAME);
+  // Se existe mas não está conectada, deleta para recriar limpa
+  if (instanciaExistente) {
+    await desconectarInstancia(INSTANCE_NAME);
+    await deletarInstancia(INSTANCE_NAME);
+    // Aguarda um instante para o servidor processar
+    await new Promise(r => setTimeout(r, 1500));
+  }
 
-  return NextResponse.json({
-    instanceName: INSTANCE_NAME,
-    qrCode,
-  });
+  // Cria nova instância — o QR vem direto na resposta de criação
+  const criada = await criarInstancia(INSTANCE_NAME);
+
+  // Tenta pegar QR da resposta do create (v2: criada.qrcode.base64)
+  let qrCode: string | null =
+    criada?.qrcode?.base64 ??
+    criada?.qr?.base64 ??
+    null;
+
+  // Fallback: tenta endpoint /connect
+  if (!qrCode) {
+    await new Promise(r => setTimeout(r, 1000));
+    qrCode = await obterQrCode(INSTANCE_NAME);
+  }
+
+  return NextResponse.json({ instanceName: INSTANCE_NAME, qrCode });
 }
 
 // ── DELETE → desconectar ───────────────────────────────────────────────────────
