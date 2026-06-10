@@ -2,26 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ChevronLeft,
-  Check,
-  Clock,
   AlertTriangle,
-  FileText,
   ChevronRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { FaturamentoDetailClient } from "./FaturamentoDetailClient";
 import { DocumentacaoSection } from "@/components/faturamentos/DocumentacaoSection";
+import { PipelineSection } from "@/components/faturamentos/PipelineSection";
 
 // ── Visual helpers ──────────────────────────────────────────────────────────
-
-const etapaStatusStyle: Record<string, { ring: string; bg: string; text: string }> = {
-  concluida:    { ring: "#2E60FF", bg: "#2E60FF", text: "white" },
-  em_andamento: { ring: "#00E7FF", bg: "#00246D", text: "white" },
-  inconformidade: { ring: "#EF4444", bg: "#EF4444", text: "white" },
-  pendente:     { ring: "#E2E8F0", bg: "white",   text: "#94A3B8" },
-};
-
 
 const clienteTipoLabel: Record<string, string> = {
   governo_al: "Governo de Alagoas",
@@ -30,57 +20,6 @@ const clienteTipoLabel: Record<string, string> = {
   brk:        "BRK",
   outro:      "Outro",
 };
-
-// ── Sub-components ──────────────────────────────────────────────────────────
-
-function EtapaCircle({
-  etapa,
-  isLast,
-}: {
-  etapa: { numero: number; nome: string; status: string; retornos: number; inconformidade_motivo?: string | null };
-  isLast: boolean;
-}) {
-  const style = etapaStatusStyle[etapa.status] ?? etapaStatusStyle.pendente;
-  const icon =
-    etapa.status === "concluida"    ? <Check        className="w-3.5 h-3.5 text-white" /> :
-    etapa.status === "em_andamento" ? <Clock        className="w-3.5 h-3.5 text-white" /> :
-    etapa.status === "inconformidade" ? <AlertTriangle className="w-3.5 h-3.5 text-white" /> :
-    null;
-
-  return (
-    <div className="flex items-center">
-      <div className="flex flex-col items-center">
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold"
-          style={{ borderColor: style.ring, backgroundColor: style.bg, color: style.text }}
-        >
-          {etapa.status === "pendente" ? etapa.numero : icon}
-        </div>
-        <span
-          className="text-xs text-center mt-1.5 max-w-[70px] leading-tight"
-          style={{
-            color: etapa.status === "em_andamento" ? "#00246D" : etapa.status === "concluida" ? "#2E60FF" : "#94A3B8",
-            fontWeight: etapa.status === "em_andamento" ? 600 : 400,
-          }}
-        >
-          {etapa.nome}
-        </span>
-        {(etapa.retornos ?? 0) > 0 && (
-          <span className="text-xs mt-0.5 font-medium" style={{ color: "#EF4444" }}>
-            ↩ {etapa.retornos}
-          </span>
-        )}
-      </div>
-      {!isLast && (
-        <div
-          className="h-0.5 w-10 mx-1 flex-shrink-0 mb-7"
-          style={{ backgroundColor: etapa.status === "concluida" ? "#2E60FF" : "#E2E8F0" }}
-        />
-      )}
-    </div>
-  );
-}
-
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
@@ -132,8 +71,6 @@ export default async function FaturamentoDetailPage({
 
   const fornecedoresJaAdicionados = (ffIds ?? []).map((r: { fornecedor_id: string }) => r.fornecedor_id);
 
-  const inconformidade = etapas.find((e: { inconformidade_motivo?: string | null }) => e.inconformidade_motivo);
-
   return (
     <div className="p-8 max-w-5xl">
       {/* Breadcrumb */}
@@ -180,24 +117,12 @@ export default async function FaturamentoDetailPage({
         </div>
       </div>
 
-      {/* Pipeline */}
-      <div className="rounded-xl border bg-white p-6 mb-6" style={{ borderColor: "#E2E8F0" }}>
-        <h2 className="text-sm font-semibold mb-5" style={{ color: "#0F172A" }}>Pipeline de Etapas</h2>
-        <div className="flex items-start overflow-x-auto pb-2">
-          {etapas.map((etapa: { numero: number; nome: string; status: string; retornos: number; inconformidade_motivo?: string | null }, i: number) => (
-            <EtapaCircle key={etapa.numero} etapa={etapa} isLast={i === etapas.length - 1} />
-          ))}
-        </div>
-        {inconformidade && (
-          <div className="mt-4 p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: "#FEF2F2" }}>
-            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#EF4444" }} />
-            <div>
-              <p className="text-xs font-semibold" style={{ color: "#991B1B" }}>Inconformidade registrada:</p>
-              <p className="text-xs mt-0.5" style={{ color: "#991B1B" }}>{inconformidade.inconformidade_motivo}</p>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Pipeline interativo */}
+      <PipelineSection
+        faturamentoId={id}
+        etapas={etapas}
+        isRevisor={isRevisor}
+      />
 
       {/* Valores resumo — Custos Internos | Produção | Mídia | Total */}
       {(valorMidia > 0 || valorProducao > 0 || valorCustosInternos > 0) && (
