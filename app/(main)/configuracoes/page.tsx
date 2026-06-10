@@ -1,12 +1,13 @@
 import { Settings, Bell, Globe, Key } from "lucide-react";
+import { WhatsAppConfig } from "@/components/configuracoes/WhatsAppConfig";
 
 export default function ConfiguracoesPage() {
   return (
     <div className="space-y-4 max-w-2xl">
       <Section icon={<Globe className="w-4 h-4" />} title="Integrações">
         <ConfigItem label="iClips ERP" value="API Key configurada · AgencyId 5050" status="ok" />
-        <ConfigItem label="Evolution API (WhatsApp)" value="Não configurado" status="pending" />
-        <ConfigItem label="Google Drive" value="Não configurado" status="pending" />
+        <WhatsAppConfig />
+        <ConfigItem label="Google Drive" value="Apps Script configurado" status="ok" />
       </Section>
 
       <Section icon={<Bell className="w-4 h-4" />} title="Notificações">
@@ -30,7 +31,7 @@ export default function ConfiguracoesPage() {
         <p className="text-xs" style={{ color: "#94A3B8" }}>
           Disrupy Faturamento v0.1.0 · MVP
           <br />
-          Integrações reais serão ativadas na próxima fase do projeto.
+          Evolution API v2.2.3 · Railway
         </p>
       </div>
     </div>
