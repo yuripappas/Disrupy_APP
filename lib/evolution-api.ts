@@ -86,3 +86,22 @@ export async function deletarInstancia(instanceName: string) {
     headers,
   });
 }
+
+// ── Enviar mensagem de texto ───────────────────────────────────────────────────
+export async function enviarMensagem(instanceName: string, numero: string, texto: string) {
+  // Normaliza: remove tudo que não é dígito, adiciona 55 se não tiver DDI
+  const num = numero.replace(/\D/g, '');
+  const destino = num.startsWith('55') ? num : `55${num}`;
+
+  const res = await fetch(`${BASE_URL}/message/sendText/${instanceName}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ number: destino, text: texto }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Erro ao enviar mensagem: ${err}`);
+  }
+  return res.json();
+}

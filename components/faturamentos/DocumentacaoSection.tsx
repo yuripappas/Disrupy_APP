@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import {
   ChevronDown, ChevronUp, FileText, ExternalLink,
   CheckCircle, XCircle, Clock, Check, X, Loader2,
-  Copy, Link2, AlertTriangle, Search, Film,
+  Copy, Link2, AlertTriangle, Search, Film, Send,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeName } from "@/lib/iclips/parser";
@@ -43,6 +43,7 @@ type FornecedorEmbed = {
   cnpj: string;
   tipo: string;
   contato_nome: string | null;
+  contato_whatsapp: string | null;
 };
 
 type FF = {
@@ -219,7 +220,10 @@ function FornecedorCard({
   isRevisor: boolean;
   onDocAction: (ffId: string, docId: string, acao: "aprovar" | "reprovar", motivo?: string) => Promise<void>;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied]           = useState(false);
+  const [enviando, setEnviando]       = useState(false);
+  const [enviado, setEnviado]         = useState(false);
+  const [erroEnvio, setErroEnvio]     = useState<string | null>(null);
   const fornecedor = ff.fornecedor!;
   const completos = ff.documentos.filter((d) => d.status === "aprovado" || d.status === "enviado").length;
   const total     = ff.documentos.length;
@@ -231,6 +235,19 @@ function FornecedorCard({
     if (!portalUrl) return;
     await navigator.clipboard.writeText(portalUrl);
     setCopied(true); setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function enviarWhatsApp() {
+    setEnviando(true); setErroEnvio(null);
+    const res = await fetch("/api/disparos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ffId: ff.id }),
+    });
+    const data = await res.json();
+    setEnviando(false);
+    if (!res.ok) { setErroEnvio(data.error ?? "Erro ao enviar"); return; }
+    setEnviado(true); setTimeout(() => setEnviado(false), 4000);
   }
 
   return (
@@ -273,10 +290,10 @@ function FornecedorCard({
               onAction={(docId, acao, motivo) => onDocAction(ff.id, docId, acao, motivo)} />
           ))}
       </div>
-      <div className="px-5 py-3 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC" }}>
+      <div className="px-5 py-3 flex items-center justify-between flex-wrap gap-2" style={{ backgroundColor: "#F8FAFC" }}>
         <p className="text-xs" style={{ color: "#94A3B8" }}>Prazo: {ff.prazo_dias} dias úteis</p>
         {portalUrl && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <a href={portalUrl} target="_blank" rel="noreferrer"
               className="flex items-center gap-1 text-xs font-medium hover:underline" style={{ color: "#2E60FF" }}>
               <Link2 className="w-3 h-3" /> Portal
@@ -287,9 +304,37 @@ function FornecedorCard({
               {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
               {copied ? "Copiado!" : "Copiar link"}
             </button>
+
+            {/* Botão WhatsApp — só aparece se o fornecedor tem número cadastrado */}
+            {fornecedor.contato_whatsapp && isRevisor && (
+              <button
+                onClick={enviarWhatsApp}
+                disabled={enviando}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md font-medium transition-colors"
+                style={{
+                  backgroundColor: enviado ? "#DCFCE7" : "#F0FDF4",
+                  color: enviado ? "#16A34A" : "#15803D",
+                  opacity: enviando ? 0.6 : 1,
+                }}
+              >
+                {enviando
+                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : enviado
+                    ? <CheckCircle className="w-3 h-3" />
+                    : <Send className="w-3 h-3" />}
+                {enviando ? "Enviando..." : enviado ? "Enviado!" : "Enviar via WhatsApp"}
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {/* Erro de envio */}
+      {erroEnvio && (
+        <div className="px-5 py-2" style={{ backgroundColor: "#FEF2F2" }}>
+          <p className="text-xs" style={{ color: "#DC2626" }}>⚠ {erroEnvio}</p>
+        </div>
+      )}
     </div>
   );
 }
