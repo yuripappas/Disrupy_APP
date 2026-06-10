@@ -38,10 +38,16 @@ export function WhatsAppConfig() {
     try {
       const res  = await fetch('/api/whatsapp/instancia', { method: 'POST' });
       const data = await res.json();
+      if (!res.ok) {
+        setErro(data.error ?? 'Erro ao gerar QR code.');
+        setStatus('close');
+        return;
+      }
       if (data.qrCode) setQrCode(data.qrCode);
       iniciarPolling();
-    } catch {
-      setErro('Erro ao gerar QR code. Tente novamente.');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao gerar QR code. Tente novamente.');
+      setStatus('close');
     } finally {
       setLoading(false);
     }

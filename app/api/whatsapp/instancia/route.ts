@@ -54,36 +54,32 @@ export async function POST() {
   const user = await autenticarGestor();
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-  // Verifica se instância já existe
-  const instancias = await listarInstancias();
-  const instanciaExistente = instancias.find(i => i.instanceName === INSTANCE_NAME);
+  // 1. Tenta direto o endpoint /connect (funciona se instância já existe)
+  let qrCode = await obterQrCode(INSTANCE_NAME);
 
-  // Se já está conectada, retorna sem QR
-  if (instanciaExistente?.state === 'open') {
-    return NextResponse.json({ instanceName: INSTANCE_NAME, qrCode: null, jaConectado: true });
-  }
-
-  // Se existe mas não está conectada, deleta para recriar limpa
-  if (instanciaExistente) {
-    await desconectarInstancia(INSTANCE_NAME);
-    await deletarInstancia(INSTANCE_NAME);
-    // Aguarda um instante para o servidor processar
-    await new Promise(r => setTimeout(r, 1500));
-  }
-
-  // Cria nova instância — o QR vem direto na resposta de criação
-  const criada = await criarInstancia(INSTANCE_NAME);
-
-  // Tenta pegar QR da resposta do create (v2: criada.qrcode.base64)
-  let qrCode: string | null =
-    criada?.qrcode?.base64 ??
-    criada?.qr?.base64 ??
-    null;
-
-  // Fallback: tenta endpoint /connect
+  // 2. Se não tem QR, deleta instância antiga e recria
   if (!qrCode) {
-    await new Promise(r => setTimeout(r, 1000));
-    qrCode = await obterQrCode(INSTANCE_NAME);
+    await deletarInstancia(INSTANCE_NAME);
+
+    const criada = await criarInstancia(INSTANCE_NAME);
+
+    // QR pode vir direto na resposta do create
+    qrCode =
+      criada?.qrcode?.base64 ??
+      criada?.qr?.base64 ??
+      null;
+
+    // Fallback: tenta /connect após criação
+    if (!qrCode) {
+      qrCode = await obterQrCode(INSTANCE_NAME);
+    }
+  }
+
+  if (!qrCode) {
+    return NextResponse.json(
+      { error: 'Não foi possível gerar o QR code. Verifique se a Evolution API está online.' },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({ instanceName: INSTANCE_NAME, qrCode });
