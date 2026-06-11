@@ -42,7 +42,8 @@ export function WhatsAppConfig() {
       const st = await buscarEstado();
       if (st === 'open') {
         pararPolling();
-        setModal(false);
+        // Mostra "conectado" por 1.5s antes de fechar o modal
+        setTimeout(() => setModal(false), 1500);
       }
     }, 2000);
   }
@@ -141,7 +142,7 @@ export function WhatsAppConfig() {
 
           {status === 'conectando' && (
             <button
-              onClick={() => setModal(true)}
+              onClick={() => { setModal(true); iniciarPolling(); }}
               className="text-xs px-3 py-1.5 rounded-lg border font-medium"
               style={{ borderColor: '#F59E0B', color: '#D97706' }}
             >
@@ -220,7 +221,7 @@ export function WhatsAppConfig() {
               ))}
             </ol>
 
-            {qrCode && (
+            {qrCode && status !== 'open' && (
               <button
                 onClick={atualizarQr}
                 className="mt-4 w-full flex items-center justify-center gap-2 py-2 rounded-lg border text-xs"
@@ -231,15 +232,27 @@ export function WhatsAppConfig() {
               </button>
             )}
 
-            <div
-              className="mt-3 flex items-center justify-center gap-2 py-2 rounded-lg"
-              style={{ backgroundColor: '#FFFBEB' }}
-            >
-              <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#D97706' }} />
-              <span className="text-xs" style={{ color: '#D97706' }}>
-                Aguardando conexão...
-              </span>
-            </div>
+            {status === 'open' ? (
+              <div
+                className="mt-3 flex items-center justify-center gap-2 py-2 rounded-lg"
+                style={{ backgroundColor: '#F0FDF4' }}
+              >
+                <CheckCircle className="w-3 h-3" style={{ color: '#16A34A' }} />
+                <span className="text-xs font-medium" style={{ color: '#16A34A' }}>
+                  WhatsApp conectado com sucesso!
+                </span>
+              </div>
+            ) : (
+              <div
+                className="mt-3 flex items-center justify-center gap-2 py-2 rounded-lg"
+                style={{ backgroundColor: '#FFFBEB' }}
+              >
+                <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#D97706' }} />
+                <span className="text-xs" style={{ color: '#D97706' }}>
+                  Aguardando conexão...
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
