@@ -10,8 +10,6 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import {
   criarInstancia,
-  estadoConexao,
-  listarInstancias,
   desconectarInstancia,
   deletarInstancia,
 } from '@/lib/evolution-api';
@@ -33,33 +31,41 @@ export async function GET() {
   const user = await autenticarGestor();
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-  const instancias = await listarInstancias();
-  const instancia = instancias.find(i => i.instanceName === INSTANCE_NAME);
+  // Checa estado diretamente (sem listarInstancias que pode ter formato variável)
+  const stateRes = await fetch(`${BASE_URL}/instance/connectionState/${INSTANCE_NAME}`, {
+    headers: { apikey: API_KEY },
+  });
 
-  if (!instancia) {
+  // 404 = instância não existe
+  if (!stateRes.ok) {
     return NextResponse.json({ status: 'nao_configurado', instanceName: INSTANCE_NAME });
   }
 
-  const state = await estadoConexao(INSTANCE_NAME);
+  const stateData = await stateRes.json();
+  // Evolution API v2 retorna { instance: { state: "open"|"connecting"|"close" } }
+  const rawState: string = stateData?.instance?.state ?? stateData?.state ?? 'close';
 
-  // Se conectando, tenta pegar o QR code
+  // Mapeia para os status do frontend
+  const status =
+    rawState === 'open'       ? 'open'       :
+    rawState === 'connecting' ? 'conectando' :
+    'close';
+
+  const number: string | null = stateData?.instance?.ownerJid ?? null;
+
+  // Se não está conectado, tenta pegar QR code
   let qrCode: string | null = null;
-  if (state !== 'open') {
-    const res = await fetch(`${BASE_URL}/instance/connect/${INSTANCE_NAME}`, {
+  if (status !== 'open') {
+    const qrRes = await fetch(`${BASE_URL}/instance/connect/${INSTANCE_NAME}`, {
       headers: { apikey: API_KEY },
     });
-    if (res.ok) {
-      const data = await res.json();
-      qrCode = data.base64 ?? null;
+    if (qrRes.ok) {
+      const qrData = await qrRes.json();
+      qrCode = qrData.base64 ?? null;
     }
   }
 
-  return NextResponse.json({
-    status: state,
-    instanceName: INSTANCE_NAME,
-    number: instancia.number ?? null,
-    qrCode,
-  });
+  return NextResponse.json({ status, instanceName: INSTANCE_NAME, number, qrCode });
 }
 
 // ── POST → cria instância ──────────────────────────────────────────────────────
