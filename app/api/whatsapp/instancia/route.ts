@@ -54,35 +54,42 @@ export async function POST() {
   const user = await autenticarGestor();
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-  // 1. Tenta direto o endpoint /connect (funciona se instância já existe)
-  let qrCode = await obterQrCode(INSTANCE_NAME);
+  const BASE_URL = process.env.EVOLUTION_API_URL!;
+  const API_KEY  = process.env.EVOLUTION_API_KEY!;
+  const headers  = { 'Content-Type': 'application/json', apikey: API_KEY };
 
-  // 2. Se não tem QR, deleta instância antiga e recria
-  if (!qrCode) {
-    await deletarInstancia(INSTANCE_NAME);
+  // DEBUG: apaga instância existente e recria, retornando a resposta raw
+  await fetch(`${BASE_URL}/instance/delete/${INSTANCE_NAME}`, { method: 'DELETE', headers });
 
-    const criada = await criarInstancia(INSTANCE_NAME);
+  const createRes = await fetch(`${BASE_URL}/instance/create`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ instanceName: INSTANCE_NAME, integration: 'WHATSAPP-BAILEYS', qrcode: true }),
+  });
+  const createData = await createRes.json();
 
-    // QR pode vir direto na resposta do create
-    qrCode =
-      criada?.qrcode?.base64 ??
-      criada?.qr?.base64 ??
-      null;
+  const connectRes = await fetch(`${BASE_URL}/instance/connect/${INSTANCE_NAME}`, { headers });
+  const connectData = connectRes.ok ? await connectRes.json() : { error: connectRes.status };
 
-    // Fallback: tenta /connect após criação
-    if (!qrCode) {
-      qrCode = await obterQrCode(INSTANCE_NAME);
-    }
-  }
+  // Tenta extrair QR de qualquer campo possível
+  const qrCode =
+    connectData?.base64        ??
+    connectData?.qrcode?.base64 ??
+    createData?.qrcode?.base64  ??
+    createData?.qr?.base64      ??
+    null;
 
-  if (!qrCode) {
-    return NextResponse.json(
-      { error: 'Não foi possível gerar o QR code. Verifique se a Evolution API está online.' },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json({ instanceName: INSTANCE_NAME, qrCode });
+  // Retorna debug + QR (temporário para diagnosticar)
+  return NextResponse.json({
+    qrCode,
+    debug: {
+      createStatus: createRes.status,
+      createKeys: Object.keys(createData ?? {}),
+      connectStatus: connectRes.status,
+      connectKeys: Object.keys(connectData ?? {}),
+      connectData,
+    },
+  });
 }
 
 // ── DELETE → desconectar ───────────────────────────────────────────────────────
