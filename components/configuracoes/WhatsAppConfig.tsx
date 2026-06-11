@@ -14,92 +14,85 @@ export function WhatsAppConfig() {
   const [erro, setErro]       = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Busca status atual ───────────────────────────────────────────────────────
-  async function buscarStatus() {
+  // ── Busca status + QR ────────────────────────────────────────────────────────
+  async function buscarStatus(): Promise<'open' | 'outros'> {
     const res  = await fetch('/api/whatsapp/instancia');
     const data = await res.json();
-    setStatus(data.status ?? 'close');
+    const st: Status = data.status ?? 'close';
+    setStatus(st);
     setNumber(data.number ?? null);
+    if (data.qrCode) setQrCode(data.qrCode);
+    return st === 'open' ? 'open' : 'outros';
   }
 
   useEffect(() => {
     buscarStatus();
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => pararPolling();
   }, []);
 
-  // ── Iniciar conexão ──────────────────────────────────────────────────────────
-  async function conectar() {
-    setLoading(true);
-    setErro(null);
-    setModal(true);
-    setQrCode(null);
-    setStatus('conectando');
-
-    try {
-      const res  = await fetch('/api/whatsapp/instancia', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        setErro(data.error ?? 'Erro ao gerar QR code.');
-        setStatus('close');
-        return;
-      }
-      if (data.qrCode) setQrCode(data.qrCode);
-      iniciarPolling();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Erro ao gerar QR code. Tente novamente.');
-      setStatus('close');
-    } finally {
-      setLoading(false);
-    }
+  function pararPolling() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }
 
-  // ── Polling de estado ────────────────────────────────────────────────────────
+  // ── Polling — busca QR + checa se conectou ───────────────────────────────────
   function iniciarPolling() {
-    if (pollRef.current) clearInterval(pollRef.current);
+    pararPolling();
     pollRef.current = setInterval(async () => {
-      const res  = await fetch('/api/whatsapp/instancia');
-      const data = await res.json();
-      if (data.status === 'open') {
-        setStatus('open');
-        setNumber(data.number ?? null);
+      const resultado = await buscarStatus();
+      if (resultado === 'open') {
+        pararPolling();
         setModal(false);
-        if (pollRef.current) clearInterval(pollRef.current);
       }
     }, 3000);
   }
 
-  // ── Atualizar QR code ────────────────────────────────────────────────────────
-  async function atualizarQr() {
+  // ── Conectar ─────────────────────────────────────────────────────────────────
+  async function conectar() {
     setLoading(true);
+    setErro(null);
     setQrCode(null);
-    try {
-      const res  = await fetch('/api/whatsapp/instancia', { method: 'POST' });
+    setModal(true);
+    setStatus('conectando');
+
+    const res = await fetch('/api/whatsapp/instancia', { method: 'POST' });
+    if (!res.ok) {
       const data = await res.json();
-      if (data.qrCode) setQrCode(data.qrCode);
-    } finally {
+      setErro(data.error ?? 'Erro ao criar instância.');
+      setStatus('close');
       setLoading(false);
+      return;
     }
+
+    setLoading(false);
+    // Começa a pegar QR + checar conexão
+    iniciarPolling();
+  }
+
+  // ── Atualizar QR ─────────────────────────────────────────────────────────────
+  async function atualizarQr() {
+    setQrCode(null);
+    await buscarStatus();
   }
 
   // ── Desconectar ──────────────────────────────────────────────────────────────
   async function desconectar() {
     if (!confirm('Deseja desconectar o WhatsApp?')) return;
     setLoading(true);
+    pararPolling();
     await fetch('/api/whatsapp/instancia', { method: 'DELETE' });
     setStatus('nao_configurado');
     setNumber(null);
+    setQrCode(null);
     setLoading(false);
   }
 
   // ── Fechar modal ─────────────────────────────────────────────────────────────
   function fecharModal() {
-    if (pollRef.current) clearInterval(pollRef.current);
+    pararPolling();
     setModal(false);
-    setStatus('close');
     buscarStatus();
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <>
       <div className="flex items-center justify-between px-5 py-4">
@@ -134,7 +127,7 @@ export function WhatsAppConfig() {
             <button
               onClick={conectar}
               disabled={loading}
-              className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5"
+              className="text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
               style={{ backgroundColor: '#16A34A', color: '#fff' }}
             >
               {loading && <Loader2 className="w-3 h-3 animate-spin" />}
@@ -152,7 +145,6 @@ export function WhatsAppConfig() {
             </button>
           )}
 
-          {/* dot de status */}
           <StatusDot status={status} />
         </div>
       </div>
@@ -168,7 +160,6 @@ export function WhatsAppConfig() {
             className="rounded-2xl bg-white p-8 max-w-sm w-full mx-4 shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            {/* Cabeçalho */}
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-base font-semibold" style={{ color: '#0F172A' }}>
@@ -191,18 +182,17 @@ export function WhatsAppConfig() {
               {loading ? (
                 <div className="flex flex-col items-center gap-3">
                   <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#94A3B8' }} />
-                  <p className="text-xs" style={{ color: '#94A3B8' }}>Gerando QR code...</p>
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>Criando instância...</p>
                 </div>
               ) : qrCode ? (
-                <img
-                  src={qrCode}
-                  alt="QR Code WhatsApp"
-                  className="w-56 h-56 object-contain"
-                />
+                <img src={qrCode} alt="QR Code WhatsApp" className="w-56 h-56 object-contain" />
               ) : erro ? (
                 <p className="text-sm text-center px-4" style={{ color: '#EF4444' }}>{erro}</p>
               ) : (
-                <p className="text-sm" style={{ color: '#94A3B8' }}>Aguardando QR code...</p>
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#94A3B8' }} />
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>Aguardando QR code...</p>
+                </div>
               )}
             </div>
 
@@ -226,11 +216,10 @@ export function WhatsAppConfig() {
               ))}
             </ol>
 
-            {/* Atualizar QR */}
-            {qrCode && !loading && (
+            {qrCode && (
               <button
                 onClick={atualizarQr}
-                className="mt-4 w-full flex items-center justify-center gap-2 py-2 rounded-lg border text-xs transition-colors"
+                className="mt-4 w-full flex items-center justify-center gap-2 py-2 rounded-lg border text-xs"
                 style={{ borderColor: '#E2E8F0', color: '#64748B' }}
               >
                 <RefreshCw className="w-3 h-3" />
@@ -238,7 +227,6 @@ export function WhatsAppConfig() {
               </button>
             )}
 
-            {/* Aguardando */}
             <div
               className="mt-3 flex items-center justify-center gap-2 py-2 rounded-lg"
               style={{ backgroundColor: '#FFFBEB' }}
@@ -254,8 +242,6 @@ export function WhatsAppConfig() {
     </>
   );
 }
-
-// ── Sub-componentes ────────────────────────────────────────────────────────────
 
 function StatusLabel({ status, number }: { status: Status; number: string | null }) {
   if (status === 'carregando') return (
@@ -286,15 +272,9 @@ function StatusDot({ status }: { status: Status }) {
     open:            '#10B981',
     close:           '#F59E0B',
   };
-  return (
-    <div
-      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-      style={{ backgroundColor: cores[status] }}
-    />
-  );
+  return <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cores[status] }} />;
 }
 
 function formatarNumero(n: string) {
-  // Remove @s.whatsapp.net se presente
   return n.replace('@s.whatsapp.net', '').replace(/(\d{2})(\d{2})(\d{5})(\d{4})/, '+$1 ($2) $3-$4');
 }

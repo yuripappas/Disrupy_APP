@@ -1,16 +1,15 @@
 /**
  * /api/whatsapp/instancia
  *
- * GET  → retorna estado atual da instância (status + número conectado)
- * POST → cria instância (se não existir) e retorna QR code
- * DELETE → desconecta e deleta a instância
+ * GET    → estado da conexão + QR code (se estiver conectando)
+ * POST   → cria instância (deleta a antiga se existir)
+ * DELETE → desconecta e deleta instância
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import {
   criarInstancia,
-  obterQrCode,
   estadoConexao,
   listarInstancias,
   desconectarInstancia,
@@ -18,8 +17,9 @@ import {
 } from '@/lib/evolution-api';
 
 const INSTANCE_NAME = 'disrupy';
+const BASE_URL = process.env.EVOLUTION_API_URL!;
+const API_KEY  = process.env.EVOLUTION_API_KEY!;
 
-// ── Auth helper ────────────────────────────────────────────────────────────────
 async function autenticarGestor() {
   const supabase = await createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -28,7 +28,7 @@ async function autenticarGestor() {
   return user;
 }
 
-// ── GET ────────────────────────────────────────────────────────────────────────
+// ── GET → estado + QR code ─────────────────────────────────────────────────────
 export async function GET() {
   const user = await autenticarGestor();
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
@@ -42,57 +42,42 @@ export async function GET() {
 
   const state = await estadoConexao(INSTANCE_NAME);
 
+  // Se conectando, tenta pegar o QR code
+  let qrCode: string | null = null;
+  if (state !== 'open') {
+    const res = await fetch(`${BASE_URL}/instance/connect/${INSTANCE_NAME}`, {
+      headers: { apikey: API_KEY },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      qrCode = data.base64 ?? null;
+    }
+  }
+
   return NextResponse.json({
     status: state,
     instanceName: INSTANCE_NAME,
     number: instancia.number ?? null,
+    qrCode,
   });
 }
 
-// ── POST → conectar / obter QR ─────────────────────────────────────────────────
+// ── POST → cria instância ──────────────────────────────────────────────────────
 export async function POST() {
   const user = await autenticarGestor();
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-  const BASE_URL = process.env.EVOLUTION_API_URL!;
-  const API_KEY  = process.env.EVOLUTION_API_KEY!;
-  const headers  = { 'Content-Type': 'application/json', apikey: API_KEY };
+  // Deleta instância anterior se existir
+  await deletarInstancia(INSTANCE_NAME);
 
-  // DEBUG: apaga instância existente e recria, retornando a resposta raw
-  await fetch(`${BASE_URL}/instance/delete/${INSTANCE_NAME}`, { method: 'DELETE', headers });
+  // Cria nova instância
+  await criarInstancia(INSTANCE_NAME);
 
-  const createRes = await fetch(`${BASE_URL}/instance/create`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ instanceName: INSTANCE_NAME, integration: 'WHATSAPP-BAILEYS', qrcode: true }),
-  });
-  const createData = await createRes.json();
-
-  const connectRes = await fetch(`${BASE_URL}/instance/connect/${INSTANCE_NAME}`, { headers });
-  const connectData = connectRes.ok ? await connectRes.json() : { error: connectRes.status };
-
-  // Tenta extrair QR de qualquer campo possível
-  const qrCode =
-    connectData?.base64        ??
-    connectData?.qrcode?.base64 ??
-    createData?.qrcode?.base64  ??
-    createData?.qr?.base64      ??
-    null;
-
-  // Retorna debug completo para diagnosticar
-  return NextResponse.json({
-    qrCode,
-    debug: {
-      createStatus: createRes.status,
-      createData,
-      connectStatus: connectRes.status,
-      connectData,
-    },
-  });
+  return NextResponse.json({ ok: true, instanceName: INSTANCE_NAME });
 }
 
 // ── DELETE → desconectar ───────────────────────────────────────────────────────
-export async function DELETE(_req: NextRequest) {
+export async function DELETE() {
   const user = await autenticarGestor();
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
