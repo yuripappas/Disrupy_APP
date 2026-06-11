@@ -23,7 +23,7 @@ async function autenticarGestor() {
   return user;
 }
 
-// ── GET → apenas verifica estado ──────────────────────────────────────────────
+// ── GET → estado + QR code quando conectando ──────────────────────────────────
 export async function GET() {
   const user = await autenticarGestor();
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
@@ -44,33 +44,29 @@ export async function GET() {
 
   const number: string | null = data?.instance?.ownerJid ?? null;
 
-  return NextResponse.json({ status, instanceName: INSTANCE_NAME, number });
-}
-
-// ── POST → cria instância + busca QR com retry ─────────────────────────────────
-export async function POST() {
-  const user = await autenticarGestor();
-  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-
-  // Deleta instância anterior
-  await deletarInstancia(INSTANCE_NAME);
-
-  // Cria nova instância
-  await criarInstancia(INSTANCE_NAME);
-
-  // Tenta obter QR code com até 4 tentativas (espera 1.5s entre cada)
+  // Quando conectando, busca QR code para exibir no modal
   let qrCode: string | null = null;
-  for (let i = 0; i < 4; i++) {
-    await new Promise(r => setTimeout(r, 1500));
+  if (status === 'conectando') {
     const qrRes = await fetch(`${BASE_URL}/instance/connect/${INSTANCE_NAME}`, { headers: H });
     if (qrRes.ok) {
       const qrData = await qrRes.json();
       qrCode = qrData.base64 ?? null;
-      if (qrCode) break;
     }
   }
 
-  return NextResponse.json({ ok: true, instanceName: INSTANCE_NAME, qrCode });
+  return NextResponse.json({ status, instanceName: INSTANCE_NAME, number, qrCode });
+}
+
+// ── POST → cria instância (retorna imediato, cliente faz polling do QR) ────────
+export async function POST() {
+  const user = await autenticarGestor();
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
+  // Deleta instância anterior e cria nova
+  await deletarInstancia(INSTANCE_NAME);
+  await criarInstancia(INSTANCE_NAME);
+
+  return NextResponse.json({ ok: true, instanceName: INSTANCE_NAME });
 }
 
 // ── DELETE → desconectar ───────────────────────────────────────────────────────

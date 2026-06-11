@@ -14,13 +14,15 @@ export function WhatsAppConfig() {
   const [erro, setErro]       = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Busca apenas estado (sem QR) ─────────────────────────────────────────────
+  // ── Busca estado + QR (GET agora retorna qrCode quando conectando) ───────────
   async function buscarEstado() {
     const res  = await fetch('/api/whatsapp/instancia');
     const data = await res.json();
     const st: Status = data.status ?? 'close';
     setStatus(st);
     setNumber(data.number ?? null);
+    // Atualiza QR se vier na resposta
+    if (data.qrCode) setQrCode(data.qrCode);
     return st;
   }
 
@@ -33,7 +35,7 @@ export function WhatsAppConfig() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }
 
-  // ── Polling — só verifica se conectou ────────────────────────────────────────
+  // ── Polling — verifica estado + atualiza QR ──────────────────────────────────
   function iniciarPolling() {
     pararPolling();
     pollRef.current = setInterval(async () => {
@@ -42,10 +44,10 @@ export function WhatsAppConfig() {
         pararPolling();
         setModal(false);
       }
-    }, 4000);
+    }, 2000);
   }
 
-  // ── Conectar — POST retorna QR direto ─────────────────────────────────────────
+  // ── Conectar — POST cria instância, polling busca QR ─────────────────────────
   async function conectar() {
     setLoading(true);
     setErro(null);
@@ -63,18 +65,16 @@ export function WhatsAppConfig() {
       return;
     }
 
-    if (data.qrCode) setQrCode(data.qrCode);
     setLoading(false);
+    // Inicia polling imediatamente — GET retorna QR quando disponível
     iniciarPolling();
   }
 
-  // ── Atualizar QR manualmente ──────────────────────────────────────────────────
+  // ── Atualizar QR manualmente — busca QR atual do GET ────────────────────────
   async function atualizarQr() {
     setQrCode(null);
     setLoading(true);
-    const res  = await fetch('/api/whatsapp/instancia', { method: 'POST' });
-    const data = await res.json();
-    if (data.qrCode) setQrCode(data.qrCode);
+    await buscarEstado();
     setLoading(false);
   }
 
@@ -94,7 +94,7 @@ export function WhatsAppConfig() {
   function fecharModal() {
     pararPolling();
     setModal(false);
-    buscarStatus();
+    buscarEstado();
   }
 
   return (
