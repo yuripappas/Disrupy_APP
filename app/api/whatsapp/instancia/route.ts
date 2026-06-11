@@ -79,14 +79,13 @@ export async function POST() {
     createData?.qr?.base64      ??
     null;
 
-  // Retorna debug + QR (temporário para diagnosticar)
+  // Retorna debug completo para diagnosticar
   return NextResponse.json({
     qrCode,
     debug: {
       createStatus: createRes.status,
-      createKeys: Object.keys(createData ?? {}),
+      createData,
       connectStatus: connectRes.status,
-      connectKeys: Object.keys(connectData ?? {}),
       connectData,
     },
   });
