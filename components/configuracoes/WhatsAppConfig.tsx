@@ -14,19 +14,18 @@ export function WhatsAppConfig() {
   const [erro, setErro]       = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Busca status + QR ────────────────────────────────────────────────────────
-  async function buscarStatus(): Promise<'open' | 'outros'> {
+  // ── Busca apenas estado (sem QR) ─────────────────────────────────────────────
+  async function buscarEstado() {
     const res  = await fetch('/api/whatsapp/instancia');
     const data = await res.json();
     const st: Status = data.status ?? 'close';
     setStatus(st);
     setNumber(data.number ?? null);
-    if (data.qrCode) setQrCode(data.qrCode);
-    return st === 'open' ? 'open' : 'outros';
+    return st;
   }
 
   useEffect(() => {
-    buscarStatus();
+    buscarEstado();
     return () => pararPolling();
   }, []);
 
@@ -34,19 +33,19 @@ export function WhatsAppConfig() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }
 
-  // ── Polling — busca QR + checa se conectou ───────────────────────────────────
+  // ── Polling — só verifica se conectou ────────────────────────────────────────
   function iniciarPolling() {
     pararPolling();
     pollRef.current = setInterval(async () => {
-      const resultado = await buscarStatus();
-      if (resultado === 'open') {
+      const st = await buscarEstado();
+      if (st === 'open') {
         pararPolling();
         setModal(false);
       }
-    }, 3000);
+    }, 4000);
   }
 
-  // ── Conectar ─────────────────────────────────────────────────────────────────
+  // ── Conectar — POST retorna QR direto ─────────────────────────────────────────
   async function conectar() {
     setLoading(true);
     setErro(null);
@@ -54,24 +53,29 @@ export function WhatsAppConfig() {
     setModal(true);
     setStatus('conectando');
 
-    const res = await fetch('/api/whatsapp/instancia', { method: 'POST' });
+    const res  = await fetch('/api/whatsapp/instancia', { method: 'POST' });
+    const data = await res.json();
+
     if (!res.ok) {
-      const data = await res.json();
       setErro(data.error ?? 'Erro ao criar instância.');
       setStatus('close');
       setLoading(false);
       return;
     }
 
+    if (data.qrCode) setQrCode(data.qrCode);
     setLoading(false);
-    // Começa a pegar QR + checar conexão
     iniciarPolling();
   }
 
-  // ── Atualizar QR ─────────────────────────────────────────────────────────────
+  // ── Atualizar QR manualmente ──────────────────────────────────────────────────
   async function atualizarQr() {
     setQrCode(null);
-    await buscarStatus();
+    setLoading(true);
+    const res  = await fetch('/api/whatsapp/instancia', { method: 'POST' });
+    const data = await res.json();
+    if (data.qrCode) setQrCode(data.qrCode);
+    setLoading(false);
   }
 
   // ── Desconectar ──────────────────────────────────────────────────────────────

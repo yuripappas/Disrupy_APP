@@ -1,22 +1,19 @@
 /**
  * /api/whatsapp/instancia
  *
- * GET    → estado da conexão + QR code (se estiver conectando)
- * POST   → cria instância (deleta a antiga se existir)
+ * GET    → estado da conexão (open/conectando/close/nao_configurado)
+ * POST   → cria instância e retorna QR code (com retry)
  * DELETE → desconecta e deleta instância
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import {
-  criarInstancia,
-  desconectarInstancia,
-  deletarInstancia,
-} from '@/lib/evolution-api';
+import { criarInstancia, desconectarInstancia, deletarInstancia } from '@/lib/evolution-api';
 
 const INSTANCE_NAME = 'disrupy';
 const BASE_URL = process.env.EVOLUTION_API_URL!;
 const API_KEY  = process.env.EVOLUTION_API_KEY!;
+const H = { 'Content-Type': 'application/json', apikey: API_KEY };
 
 async function autenticarGestor() {
   const supabase = await createClient();
@@ -26,60 +23,54 @@ async function autenticarGestor() {
   return user;
 }
 
-// ── GET → estado + QR code ─────────────────────────────────────────────────────
+// ── GET → apenas verifica estado ──────────────────────────────────────────────
 export async function GET() {
   const user = await autenticarGestor();
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-  // Checa estado diretamente (sem listarInstancias que pode ter formato variável)
-  const stateRes = await fetch(`${BASE_URL}/instance/connectionState/${INSTANCE_NAME}`, {
-    headers: { apikey: API_KEY },
-  });
+  const res = await fetch(`${BASE_URL}/instance/connectionState/${INSTANCE_NAME}`, { headers: H });
 
-  // 404 = instância não existe
-  if (!stateRes.ok) {
+  if (!res.ok) {
     return NextResponse.json({ status: 'nao_configurado', instanceName: INSTANCE_NAME });
   }
 
-  const stateData = await stateRes.json();
-  // Evolution API v2 retorna { instance: { state: "open"|"connecting"|"close" } }
-  const rawState: string = stateData?.instance?.state ?? stateData?.state ?? 'close';
+  const data = await res.json();
+  const rawState: string = data?.instance?.state ?? data?.state ?? 'close';
 
-  // Mapeia para os status do frontend
   const status =
     rawState === 'open'       ? 'open'       :
     rawState === 'connecting' ? 'conectando' :
     'close';
 
-  const number: string | null = stateData?.instance?.ownerJid ?? null;
+  const number: string | null = data?.instance?.ownerJid ?? null;
 
-  // Se não está conectado, tenta pegar QR code
-  let qrCode: string | null = null;
-  if (status !== 'open') {
-    const qrRes = await fetch(`${BASE_URL}/instance/connect/${INSTANCE_NAME}`, {
-      headers: { apikey: API_KEY },
-    });
-    if (qrRes.ok) {
-      const qrData = await qrRes.json();
-      qrCode = qrData.base64 ?? null;
-    }
-  }
-
-  return NextResponse.json({ status, instanceName: INSTANCE_NAME, number, qrCode });
+  return NextResponse.json({ status, instanceName: INSTANCE_NAME, number });
 }
 
-// ── POST → cria instância ──────────────────────────────────────────────────────
+// ── POST → cria instância + busca QR com retry ─────────────────────────────────
 export async function POST() {
   const user = await autenticarGestor();
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-  // Deleta instância anterior se existir
+  // Deleta instância anterior
   await deletarInstancia(INSTANCE_NAME);
 
   // Cria nova instância
   await criarInstancia(INSTANCE_NAME);
 
-  return NextResponse.json({ ok: true, instanceName: INSTANCE_NAME });
+  // Tenta obter QR code com até 4 tentativas (espera 1.5s entre cada)
+  let qrCode: string | null = null;
+  for (let i = 0; i < 4; i++) {
+    await new Promise(r => setTimeout(r, 1500));
+    const qrRes = await fetch(`${BASE_URL}/instance/connect/${INSTANCE_NAME}`, { headers: H });
+    if (qrRes.ok) {
+      const qrData = await qrRes.json();
+      qrCode = qrData.base64 ?? null;
+      if (qrCode) break;
+    }
+  }
+
+  return NextResponse.json({ ok: true, instanceName: INSTANCE_NAME, qrCode });
 }
 
 // ── DELETE → desconectar ───────────────────────────────────────────────────────
