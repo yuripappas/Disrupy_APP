@@ -14,19 +14,18 @@ type Fornecedor = {
   ativo: boolean;
 };
 
-// ── Card de fornecedor com edição inline ──────────────────────────────────────
+// ── Linha de fornecedor com edição inline ────────────────────────────────────
 
-function FornecedorCard({ fornecedor: initial }: { fornecedor: Fornecedor }) {
-  const [forn, setForn]       = useState(initial);
+function FornecedorRow({ fornecedor: initial }: { fornecedor: Fornecedor }) {
+  const [forn, setForn]         = useState(initial);
   const [editando, setEditando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro]         = useState<string | null>(null);
 
-  // Estado temporário do formulário
   const [form, setForm] = useState({
-    contato_nome:      initial.contato_nome      ?? "",
-    contato_whatsapp:  initial.contato_whatsapp  ?? "",
-    contato_email:     initial.contato_email     ?? "",
+    contato_nome:     initial.contato_nome     ?? "",
+    contato_whatsapp: initial.contato_whatsapp ?? "",
+    contato_email:    initial.contato_email    ?? "",
   });
 
   function abrirEdicao() {
@@ -39,15 +38,10 @@ function FornecedorCard({ fornecedor: initial }: { fornecedor: Fornecedor }) {
     setEditando(true);
   }
 
-  function cancelar() {
-    setEditando(false);
-    setErro(null);
-  }
+  function cancelar() { setEditando(false); setErro(null); }
 
   async function salvar() {
-    setSalvando(true);
-    setErro(null);
-
+    setSalvando(true); setErro(null);
     const res = await fetch(`/api/fornecedores/${forn.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -57,15 +51,9 @@ function FornecedorCard({ fornecedor: initial }: { fornecedor: Fornecedor }) {
         contato_email:    form.contato_email.trim()    || null,
       }),
     });
-
     const data = await res.json();
     setSalvando(false);
-
-    if (!res.ok) {
-      setErro(data.error ?? "Erro ao salvar");
-      return;
-    }
-
+    if (!res.ok) { setErro(data.error ?? "Erro ao salvar"); return; }
     setForn((prev) => ({
       ...prev,
       contato_nome:     data.fornecedor.contato_nome,
@@ -78,27 +66,55 @@ function FornecedorCard({ fornecedor: initial }: { fornecedor: Fornecedor }) {
   const semContato = !forn.contato_nome && !forn.contato_whatsapp && !forn.contato_email;
 
   return (
-    <div
-      className="rounded-xl border bg-white overflow-hidden"
-      style={{ borderColor: semContato && !editando ? "#FDE68A" : "#E2E8F0" }}
-    >
-      {/* Cabeçalho */}
-      <div className="flex items-start justify-between px-5 py-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-0.5">
-            <Building2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#94A3B8" }} />
-            <h4 className="font-semibold text-sm truncate" style={{ color: "#0F172A" }}>
-              {forn.razao_social}
-            </h4>
-          </div>
-          <p className="text-xs font-mono ml-5.5" style={{ color: "#94A3B8" }}>{forn.cnpj}</p>
+    <div style={{ borderBottom: "1px solid #F1F5F9" }}>
+      {/* Linha principal */}
+      <div className="flex items-center gap-4 px-5 py-3">
+        {/* Empresa */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate" style={{ color: "#0F172A" }}>
+            {forn.razao_social}
+          </p>
+          <p className="text-xs font-mono mt-0.5" style={{ color: "#94A3B8" }}>{forn.cnpj}</p>
         </div>
 
+        {/* Contatos (modo visualização) */}
+        {!editando && (
+          <div className="flex items-center gap-4 flex-shrink-0">
+            {semContato ? (
+              <span className="text-xs italic" style={{ color: "#F59E0B" }}>
+                ⚠ Sem contato
+              </span>
+            ) : (
+              <>
+                {forn.contato_nome && (
+                  <div className="flex items-center gap-1.5">
+                    <User className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                    <span className="text-xs" style={{ color: "#334155" }}>{forn.contato_nome}</span>
+                  </div>
+                )}
+                {forn.contato_whatsapp && (
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                    <span className="text-xs font-mono" style={{ color: "#334155" }}>{forn.contato_whatsapp}</span>
+                  </div>
+                )}
+                {forn.contato_email && (
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                    <span className="text-xs" style={{ color: "#334155" }}>{forn.contato_email}</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Botão editar */}
         {!editando && (
           <button
             onClick={abrirEdicao}
             title="Editar contatos"
-            className="ml-3 p-1.5 rounded-lg hover:bg-slate-100 transition-colors flex-shrink-0"
+            className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors flex-shrink-0"
             style={{ color: "#64748B" }}
           >
             <Edit2 className="w-3.5 h-3.5" />
@@ -106,53 +122,22 @@ function FornecedorCard({ fornecedor: initial }: { fornecedor: Fornecedor }) {
         )}
       </div>
 
-      {/* Contatos (modo visualização) */}
-      {!editando && (
-        <div className="px-5 pb-4 space-y-1.5">
-          {semContato ? (
-            <p className="text-xs italic" style={{ color: "#F59E0B" }}>
-              ⚠ Sem contato cadastrado — clique no lápis para adicionar
-            </p>
-          ) : (
-            <>
-              {forn.contato_nome && (
-                <div className="flex items-center gap-2">
-                  <User className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
-                  <span className="text-xs" style={{ color: "#334155" }}>{forn.contato_nome}</span>
-                </div>
-              )}
-              {forn.contato_whatsapp && (
-                <div className="flex items-center gap-2">
-                  <Phone className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
-                  <span className="text-xs font-mono" style={{ color: "#334155" }}>{forn.contato_whatsapp}</span>
-                </div>
-              )}
-              {forn.contato_email && (
-                <div className="flex items-center gap-2">
-                  <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
-                  <span className="text-xs" style={{ color: "#334155" }}>{forn.contato_email}</span>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Formulário de edição */}
+      {/* Formulário de edição (expansível) */}
       {editando && (
-        <div className="px-5 pb-5 space-y-3" style={{ borderTop: "1px solid #F1F5F9" }}>
-          <p className="text-xs font-semibold pt-4" style={{ color: "#64748B" }}>Editar contatos</p>
-
-          <div className="space-y-2">
+        <div
+          className="px-5 pb-4 space-y-3"
+          style={{ backgroundColor: "#F8FAFC", borderTop: "1px solid #F1F5F9" }}
+        >
+          <div className="grid grid-cols-3 gap-3 pt-3">
             <label className="block">
               <span className="text-xs font-medium block mb-1" style={{ color: "#475569" }}>Nome do contato</span>
-              <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "#CBD5E1" }}>
+              <div className="flex items-center gap-2 rounded-lg border px-3 py-2 bg-white" style={{ borderColor: "#CBD5E1" }}>
                 <User className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
                 <input
                   type="text"
                   value={form.contato_nome}
                   onChange={(e) => setForm((f) => ({ ...f, contato_nome: e.target.value }))}
-                  placeholder="Ex: João Silva"
+                  placeholder="João Silva"
                   className="flex-1 text-xs outline-none bg-transparent"
                   style={{ color: "#0F172A" }}
                 />
@@ -161,7 +146,7 @@ function FornecedorCard({ fornecedor: initial }: { fornecedor: Fornecedor }) {
 
             <label className="block">
               <span className="text-xs font-medium block mb-1" style={{ color: "#475569" }}>WhatsApp</span>
-              <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "#CBD5E1" }}>
+              <div className="flex items-center gap-2 rounded-lg border px-3 py-2 bg-white" style={{ borderColor: "#CBD5E1" }}>
                 <Phone className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
                 <input
                   type="tel"
@@ -172,14 +157,11 @@ function FornecedorCard({ fornecedor: initial }: { fornecedor: Fornecedor }) {
                   style={{ color: "#0F172A" }}
                 />
               </div>
-              <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-                DDI + DDD + número (ex: 5582999999999)
-              </p>
             </label>
 
             <label className="block">
               <span className="text-xs font-medium block mb-1" style={{ color: "#475569" }}>E-mail</span>
-              <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "#CBD5E1" }}>
+              <div className="flex items-center gap-2 rounded-lg border px-3 py-2 bg-white" style={{ borderColor: "#CBD5E1" }}>
                 <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
                 <input
                   type="email"
@@ -193,9 +175,7 @@ function FornecedorCard({ fornecedor: initial }: { fornecedor: Fornecedor }) {
             </label>
           </div>
 
-          {erro && (
-            <p className="text-xs" style={{ color: "#DC2626" }}>⚠ {erro}</p>
-          )}
+          {erro && <p className="text-xs" style={{ color: "#DC2626" }}>⚠ {erro}</p>}
 
           <div className="flex gap-2">
             <button
@@ -204,9 +184,7 @@ function FornecedorCard({ fornecedor: initial }: { fornecedor: Fornecedor }) {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
               style={{ backgroundColor: salvando ? "#94A3B8" : "#2E60FF" }}
             >
-              {salvando
-                ? <Loader2 className="w-3 h-3 animate-spin" />
-                : <Check className="w-3 h-3" />}
+              {salvando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
               {salvando ? "Salvando..." : "Salvar"}
             </button>
             <button
@@ -215,8 +193,7 @@ function FornecedorCard({ fornecedor: initial }: { fornecedor: Fornecedor }) {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border"
               style={{ borderColor: "#E2E8F0", color: "#64748B" }}
             >
-              <X className="w-3 h-3" />
-              Cancelar
+              <X className="w-3 h-3" /> Cancelar
             </button>
           </div>
         </div>
@@ -274,9 +251,9 @@ function GrupoFornecedores({
       </button>
 
       {aberto && (
-        <div className="p-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
           {fornecedores.map((f) => (
-            <FornecedorCard key={f.id} fornecedor={f} />
+            <FornecedorRow key={f.id} fornecedor={f} />
           ))}
         </div>
       )}
