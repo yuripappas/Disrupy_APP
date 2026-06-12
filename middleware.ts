@@ -32,7 +32,8 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Rotas públicas (sem login)
-  const publicRoutes = ["/login", "/portal"];
+  // /api/cron/ é protegido pelo CRON_SECRET internamente, não precisa de sessão
+  const publicRoutes = ["/login", "/portal", "/api/cron/"];
   const isPublic =
     publicRoutes.some((r) => pathname.startsWith(r)) ||
     pathname === "/";
