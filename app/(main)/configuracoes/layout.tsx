@@ -12,6 +12,7 @@ export default async function ConfiguracoesLayout({ children }: { children: Reac
   const tabs = [
     ...(isGestor ? [{ href: "/configuracoes/usuarios", label: "Usuários" }] : []),
     ...(isGestor ? [{ href: "/configuracoes/fornecedores", label: "Fornecedores" }] : []),
+    ...(isGestor ? [{ href: "/configuracoes/templates", label: "Templates" }] : []),
     { href: "/configuracoes", label: "Integrações" },
   ];
 

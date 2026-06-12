@@ -4,15 +4,18 @@ import { useMemo, useState } from "react";
 import {
   Send, Clock, CheckCircle, XCircle, Calendar, Search,
   ChevronDown, ChevronUp, Loader2, MessageSquare, Phone,
-  Filter, ExternalLink,
+  Filter, ExternalLink, GitBranch,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { CadenciaModal } from "./CadenciaModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type DisparoRecord = {
   id: string;
   status: string;
+  tipo: string;
+  subtipo?: string | null;
   created_at: string;
   enviado_em: string | null;
   agendado_para: string | null;
@@ -27,6 +30,7 @@ export type FFRow = {
   id: string;
   link_token: string;
   valor_total: number;
+  envio_inicial_em?: string | null;
   faturamento: { id: string; nome_campanha: string; iclips_job_id: string | null };
   fornecedor:  { id: string; razao_social: string; cnpj: string; contato_nome: string | null; contato_whatsapp: string };
   documentos:  DocumentoRecord[];
@@ -170,9 +174,11 @@ function HistoricoPanel({ disparos }: { disparos: DisparoRecord[] }) {
 function Row({
   row,
   onAtualizar,
+  onCadencia,
 }: {
   row: ComputedRow;
   onAtualizar: (ffId: string, disparo: DisparoRecord) => void;
+  onCadencia: (ff: FFRow) => void;
 }) {
   const [expanded, setExpanded]     = useState(false);
   const [enviando, setEnviando]     = useState(false);
@@ -197,6 +203,8 @@ function Row({
     setEnviado(true);
     onAtualizar(row.id, {
       id: data.id ?? "tmp-" + Date.now(),
+      tipo: "whatsapp",
+      subtipo: "link_inicial",
       status: "enviado",
       created_at: new Date().toISOString(),
       enviado_em: new Date().toISOString(),
@@ -220,6 +228,8 @@ function Row({
     setDataAg("");
     onAtualizar(row.id, {
       id: "ag-" + Date.now(),
+      tipo: "whatsapp",
+      subtipo: "link_inicial",
       status: "agendado",
       created_at: new Date().toISOString(),
       enviado_em: null,
@@ -316,6 +326,17 @@ function Row({
               {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
 
+            {/* Cadência */}
+            <button
+              onClick={() => onCadencia(row)}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors"
+              style={{ backgroundColor: "#F5F3FF", color: "#7C3AED" }}
+              title="Ver cadência de mensagens"
+            >
+              <GitBranch className="w-3 h-3" />
+              Cadência
+            </button>
+
             {/* Portal */}
             <a
               href={portalUrl} target="_blank" rel="noreferrer"
@@ -380,6 +401,7 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
   const [filtroFat, setFiltroFat]             = useState("todos");
   const [filtroStatus, setFiltroStatus]       = useState("todos");
   const [busca, setBusca]                     = useState("");
+  const [cadenciaFf, setCadenciaFf]           = useState<FFRow | null>(null);
 
   // Adiciona disparo localmente (otimistic update)
   function handleAtualizar(ffId: string, disparo: DisparoRecord) {
@@ -434,6 +456,14 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
 
   return (
     <div>
+      {/* Cadência modal */}
+      {cadenciaFf && (
+        <CadenciaModal
+          ff={cadenciaFf}
+          onClose={() => setCadenciaFf(null)}
+        />
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
         <KpiCard label="Elegíveis"   value={kpi.total}       color="#334155" bg="#F8FAFC" />
@@ -525,7 +555,7 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
             </thead>
             <tbody>
               {filtered.map((row) => (
-                <Row key={row.id} row={row} onAtualizar={handleAtualizar} />
+                <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFf} />
               ))}
             </tbody>
           </table>

@@ -27,11 +27,11 @@ export default async function DisparosPage() {
   const { data, error } = await admin
     .from("faturamento_fornecedores")
     .select(`
-      id, link_token, valor_total,
+      id, link_token, valor_total, envio_inicial_em,
       faturamento:faturamentos ( id, nome_campanha, iclips_job_id ),
       fornecedor:fornecedores  ( id, razao_social, cnpj, contato_nome, contato_whatsapp ),
       documentos               ( id, status ),
-      disparos                 ( id, status, created_at, enviado_em, agendado_para )
+      disparos                 ( id, tipo, subtipo, status, created_at, enviado_em, agendado_para )
     `)
     .eq("associado", true)
     .not("link_token", "is", null);
