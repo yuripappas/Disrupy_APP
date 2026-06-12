@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
-  const { ffId } = await req.json() as { ffId: string };
+  const { ffId, agendadoPara } = await req.json() as { ffId: string; agendadoPara?: string };
   if (!ffId) return NextResponse.json({ error: 'ffId obrigatório' }, { status: 400 });
 
   // Busca o ff com dados do fornecedor e faturamento
@@ -58,15 +58,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Portal não configurado para este fornecedor' }, { status: 400 });
   }
 
-  // Verifica se WhatsApp está conectado
-  const estado = await estadoConexao(INSTANCE_NAME);
-  if (estado !== 'open') {
-    return NextResponse.json({ error: 'WhatsApp não conectado. Configure em Configurações.' }, { status: 503 });
-  }
-
   // Monta mensagem
-  const portalUrl = `${APP_URL}/portal/${ff.link_token}`;
-  const razaoSocial = (ff.fornecedor as { razao_social?: string })?.razao_social ?? 'Fornecedor';
+  const portalUrl   = `${APP_URL}/portal/${ff.link_token}`;
   const campanha    = (ff.faturamento as { nome_campanha?: string })?.nome_campanha ?? '';
   const contatoNome = (ff.fornecedor as { contato_nome?: string | null })?.contato_nome;
 
@@ -84,12 +77,30 @@ export async function POST(req: NextRequest) {
     `Em caso de dúvidas, estamos à disposição. Obrigado! 🙏`,
   ].join('\n');
 
-  // Envia via Evolution API
+  // ── Agendamento ────────────────────────────────────────────────────────────
+  if (agendadoPara) {
+    await admin.from('disparos').insert({
+      faturamento_fornecedor_id: ffId,
+      tipo: 'whatsapp',
+      numero_destino: whatsapp,
+      mensagem,
+      status: 'agendado',
+      agendado_para: agendadoPara,
+      enviado_por: user.id,
+    });
+    return NextResponse.json({ ok: true, agendado: true, agendadoPara });
+  }
+
+  // ── Envio imediato ─────────────────────────────────────────────────────────
+  const estado = await estadoConexao(INSTANCE_NAME);
+  if (estado !== 'open') {
+    return NextResponse.json({ error: 'WhatsApp não conectado. Configure em Configurações.' }, { status: 503 });
+  }
+
   try {
     await enviarMensagem(INSTANCE_NAME, whatsapp, mensagem);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro ao enviar mensagem';
-    // Registra falha
     await admin.from('disparos').insert({
       faturamento_fornecedor_id: ffId,
       tipo: 'whatsapp',
@@ -101,17 +112,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 
-  // Registra envio bem-sucedido
   await admin.from('disparos').insert({
     faturamento_fornecedor_id: ffId,
     tipo: 'whatsapp',
     numero_destino: whatsapp,
     mensagem,
     status: 'enviado',
+    enviado_em: new Date().toISOString(),
     enviado_por: user.id,
   });
 
-  return NextResponse.json({ ok: true, numero: whatsapp });
+  return NextResponse.json({ ok: true, agendado: false, numero: whatsapp });
 }
 
 // GET /api/disparos?ffId=xxx → histórico de disparos de um ff

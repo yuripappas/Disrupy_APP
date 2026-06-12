@@ -4,7 +4,8 @@ import { useState, useCallback } from "react";
 import {
   ChevronDown, ChevronUp, FileText, ExternalLink,
   CheckCircle, XCircle, Clock, Check, X, Loader2,
-  Copy, Link2, AlertTriangle, Search, Film, Send,
+  Copy, Link2, AlertTriangle, Search, Film, Send, Calendar,
+  Users,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeName } from "@/lib/iclips/parser";
@@ -54,7 +55,6 @@ type FF = {
   prazo_dias: number;
   status: string;
   link_token: string | null;
-  // campos de pendência (adicionados pela feature de fornecedores não associados)
   nome_iclips: string | null;
   associado: boolean | null;
   tipo_iclips: string | null;
@@ -90,6 +90,22 @@ const ffStatusCfg: Record<string, { label: string; color: string }> = {
 
 function isFfPending(ff: FF): boolean {
   return ff.associado === false;
+}
+
+// Formata datetime-local para exibição amigável
+function formatarDataHora(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", {
+      day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return iso; }
+}
+
+// Retorna o mínimo para o datetime-local picker (agora + 5 min)
+function minDatetimeLocal(): string {
+  const d = new Date(Date.now() + 5 * 60 * 1000);
+  d.setSeconds(0, 0);
+  return d.toISOString().slice(0, 16);
 }
 
 // ── DocRow ───────────────────────────────────────────────────────────────────
@@ -132,7 +148,6 @@ function DocRow({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm" style={{ color: "#334155" }}>{doc.label}</p>
-          {/* Múltiplos arquivos (novo modelo) */}
           {(doc.documento_arquivos?.length ?? 0) > 0 ? (
             <div className="mt-1 space-y-0.5">
               {doc.documento_arquivos.map((arq) => {
@@ -150,7 +165,6 @@ function DocRow({
               })}
             </div>
           ) : doc.arquivo_url ? (
-            /* Fallback: arquivo único legado */
             <a href={doc.arquivo_url} target="_blank" rel="noreferrer"
               className="flex items-center gap-1 text-xs mt-0.5 hover:underline" style={{ color: "#2E60FF" }}>
               <ExternalLink className="w-3 h-3" /> Ver arquivo
@@ -211,7 +225,7 @@ function DocRow({
   );
 }
 
-// ── FornecedorCard (fornecedor já associado) ─────────────────────────────────
+// ── FornecedorCard ───────────────────────────────────────────────────────────
 
 function FornecedorCard({
   ff, isRevisor, onDocAction,
@@ -224,12 +238,21 @@ function FornecedorCard({
   const [enviando, setEnviando]       = useState(false);
   const [enviado, setEnviado]         = useState(false);
   const [erroEnvio, setErroEnvio]     = useState<string | null>(null);
+
+  // Agendamento individual
+  const [mostrarAgendar, setMostrarAgendar]   = useState(false);
+  const [dataAgendada, setDataAgendada]       = useState("");
+  const [agendando, setAgendando]             = useState(false);
+  const [agendadoEm, setAgendadoEm]           = useState<string | null>(null);
+
   const fornecedor = ff.fornecedor!;
   const completos = ff.documentos.filter((d) => d.status === "aprovado" || d.status === "enviado").length;
   const total     = ff.documentos.length;
   const pct       = total > 0 ? Math.round((completos / total) * 100) : 0;
   const stCfg     = ffStatusCfg[ff.status] ?? ffStatusCfg.aguardando;
-  const portalUrl = ff.link_token ? `${typeof window !== "undefined" ? window.location.origin : "https://disrupy-app.vercel.app"}/portal/${ff.link_token}` : null;
+  const portalUrl = ff.link_token
+    ? `${typeof window !== "undefined" ? window.location.origin : "https://disrupy-app.vercel.app"}/portal/${ff.link_token}`
+    : null;
 
   async function copyLink() {
     if (!portalUrl) return;
@@ -250,8 +273,27 @@ function FornecedorCard({
     setEnviado(true); setTimeout(() => setEnviado(false), 4000);
   }
 
+  async function agendarEnvio() {
+    if (!dataAgendada) return;
+    setAgendando(true); setErroEnvio(null);
+    // Converte datetime-local (sem timezone) para ISO com timezone local
+    const dt = new Date(dataAgendada).toISOString();
+    const res = await fetch("/api/disparos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ffId: ff.id, agendadoPara: dt }),
+    });
+    const data = await res.json();
+    setAgendando(false);
+    if (!res.ok) { setErroEnvio(data.error ?? "Erro ao agendar"); return; }
+    setAgendadoEm(dataAgendada);
+    setMostrarAgendar(false);
+    setDataAgendada("");
+  }
+
   return (
     <div className="rounded-xl border bg-white overflow-hidden mb-3" style={{ borderColor: "#E2E8F0" }}>
+      {/* Header */}
       <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #F1F5F9" }}>
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -279,6 +321,8 @@ function FornecedorCard({
           </div>
         </div>
       </div>
+
+      {/* Documentos */}
       <div>
         {ff.documentos
           .sort((a, b) => {
@@ -290,41 +334,90 @@ function FornecedorCard({
               onAction={(docId, acao, motivo) => onDocAction(ff.id, docId, acao, motivo)} />
           ))}
       </div>
-      <div className="px-5 py-3 flex items-center justify-between flex-wrap gap-2" style={{ backgroundColor: "#F8FAFC" }}>
-        <p className="text-xs" style={{ color: "#94A3B8" }}>Prazo: {ff.prazo_dias} dias úteis</p>
-        {portalUrl && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <a href={portalUrl} target="_blank" rel="noreferrer"
-              className="flex items-center gap-1 text-xs font-medium hover:underline" style={{ color: "#2E60FF" }}>
-              <Link2 className="w-3 h-3" /> Portal
-            </a>
-            <button onClick={copyLink}
-              className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors"
-              style={{ backgroundColor: copied ? "#ECFDF5" : "#EEF2FF", color: copied ? "#059669" : "#2E60FF" }}>
-              {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-              {copied ? "Copiado!" : "Copiar link"}
-            </button>
 
-            {/* Botão WhatsApp — só aparece se o fornecedor tem número cadastrado */}
-            {fornecedor.contato_whatsapp && isRevisor && (
-              <button
-                onClick={enviarWhatsApp}
-                disabled={enviando}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md font-medium transition-colors"
-                style={{
-                  backgroundColor: enviado ? "#DCFCE7" : "#F0FDF4",
-                  color: enviado ? "#16A34A" : "#15803D",
-                  opacity: enviando ? 0.6 : 1,
-                }}
-              >
-                {enviando
-                  ? <Loader2 className="w-3 h-3 animate-spin" />
-                  : enviado
-                    ? <CheckCircle className="w-3 h-3" />
-                    : <Send className="w-3 h-3" />}
-                {enviando ? "Enviando..." : enviado ? "Enviado!" : "Enviar via WhatsApp"}
+      {/* Footer */}
+      <div className="px-5 py-3 space-y-2" style={{ backgroundColor: "#F8FAFC" }}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <p className="text-xs" style={{ color: "#94A3B8" }}>Prazo: {ff.prazo_dias} dias úteis</p>
+
+          {portalUrl && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <a href={portalUrl} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1 text-xs font-medium hover:underline" style={{ color: "#2E60FF" }}>
+                <Link2 className="w-3 h-3" /> Portal
+              </a>
+              <button onClick={copyLink}
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors"
+                style={{ backgroundColor: copied ? "#ECFDF5" : "#EEF2FF", color: copied ? "#059669" : "#2E60FF" }}>
+                {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {copied ? "Copiado!" : "Copiar link"}
               </button>
-            )}
+
+              {/* Botões WhatsApp */}
+              {fornecedor.contato_whatsapp && isRevisor && (
+                <>
+                  <button
+                    onClick={enviarWhatsApp}
+                    disabled={enviando}
+                    className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md font-medium transition-colors"
+                    style={{
+                      backgroundColor: enviado ? "#DCFCE7" : "#F0FDF4",
+                      color: enviado ? "#16A34A" : "#15803D",
+                      opacity: enviando ? 0.6 : 1,
+                    }}
+                  >
+                    {enviando
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : enviado
+                        ? <CheckCircle className="w-3 h-3" />
+                        : <Send className="w-3 h-3" />}
+                    {enviando ? "Enviando..." : enviado ? "Enviado!" : "Enviar agora"}
+                  </button>
+
+                  <button
+                    onClick={() => setMostrarAgendar((v) => !v)}
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors"
+                    style={{
+                      backgroundColor: mostrarAgendar || agendadoEm ? "#FEF3C7" : "#F1F5F9",
+                      color: mostrarAgendar || agendadoEm ? "#D97706" : "#64748B",
+                    }}
+                  >
+                    <Calendar className="w-3 h-3" />
+                    {agendadoEm ? `⏰ ${formatarDataHora(agendadoEm)}` : "Agendar"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Painel de agendamento individual */}
+        {mostrarAgendar && (
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              type="datetime-local"
+              value={dataAgendada}
+              min={minDatetimeLocal()}
+              onChange={(e) => setDataAgendada(e.target.value)}
+              className="text-xs px-2 py-1.5 rounded-lg border outline-none"
+              style={{ borderColor: "#F59E0B", color: "#334155" }}
+            />
+            <button
+              onClick={agendarEnvio}
+              disabled={!dataAgendada || agendando}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium text-white transition-colors"
+              style={{ backgroundColor: !dataAgendada || agendando ? "#94A3B8" : "#D97706" }}
+            >
+              {agendando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Calendar className="w-3 h-3" />}
+              {agendando ? "Agendando..." : "Confirmar"}
+            </button>
+            <button
+              onClick={() => { setMostrarAgendar(false); setDataAgendada(""); }}
+              className="text-xs"
+              style={{ color: "#94A3B8" }}
+            >
+              Cancelar
+            </button>
           </div>
         )}
       </div>
@@ -339,7 +432,7 @@ function FornecedorCard({
   );
 }
 
-// ── PendingFornecedorCard (fornecedor sem associação) ─────────────────────────
+// ── PendingFornecedorCard ─────────────────────────────────────────────────────
 
 function PendingFornecedorCard({
   ff,
@@ -390,6 +483,7 @@ function PendingFornecedorCard({
       cnpj: forn.cnpj,
       tipo: forn.tipo,
       contato_nome: forn.contato_nome,
+      contato_whatsapp: null,
     });
   }
 
@@ -402,12 +496,8 @@ function PendingFornecedorCard({
   return (
     <div
       className="rounded-xl overflow-hidden mb-3"
-      style={{
-        border: "2px dashed #F59E0B",
-        backgroundColor: "#FFFBEB",
-      }}
+      style={{ border: "2px dashed #F59E0B", backgroundColor: "#FFFBEB" }}
     >
-      {/* Header do card pendente */}
       <div className="flex items-start justify-between px-5 py-4">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
@@ -434,7 +524,6 @@ function PendingFornecedorCard({
         </div>
       </div>
 
-      {/* UI de associação */}
       <div className="px-5 pb-4">
         {mode === "idle" && (
           <button
@@ -458,9 +547,7 @@ function PendingFornecedorCard({
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3" style={{ color: "#94A3B8" }} />
               <input
-                autoFocus
-                type="text"
-                value={busca}
+                autoFocus type="text" value={busca}
                 onChange={(e) => setBusca(e.target.value)}
                 placeholder="Buscar fornecedor no cadastro..."
                 className="w-full pl-7 pr-3 py-1.5 text-xs rounded-lg border outline-none bg-white"
@@ -478,8 +565,7 @@ function PendingFornecedorCard({
               ) : (
                 filtrados.map((f) => (
                   <button
-                    key={f.id}
-                    type="button"
+                    key={f.id} type="button"
                     onClick={() => handleAssociar(f)}
                     className="w-full text-left px-3 py-2 text-xs hover:bg-amber-50 transition-colors flex items-center justify-between"
                     style={{ borderBottom: "1px solid #F1F5F9" }}
@@ -500,10 +586,8 @@ function PendingFornecedorCard({
             </div>
             {erro && <p className="text-xs" style={{ color: "#DC2626" }}>{erro}</p>}
             <button
-              type="button"
-              onClick={() => setMode("idle")}
-              className="text-xs hover:underline"
-              style={{ color: "#94A3B8" }}
+              type="button" onClick={() => setMode("idle")}
+              className="text-xs hover:underline" style={{ color: "#94A3B8" }}
             >
               Cancelar
             </button>
@@ -514,10 +598,193 @@ function PendingFornecedorCard({
   );
 }
 
-// ── GroupSection ─────────────────────────────────────────────────────────────
+// ── LoteModal — modal de envio em lote por grupo ──────────────────────────────
+
+function LoteModal({
+  titulo,
+  ffs,
+  onClose,
+  onConfirm,
+}: {
+  titulo: string;
+  ffs: FF[];
+  onClose: () => void;
+  onConfirm: (ffIds: string[], agendadoPara?: string) => Promise<void>;
+}) {
+  const [modo, setModo]               = useState<"agora" | "agendar">("agora");
+  const [dataAgendada, setDataAgendada] = useState("");
+  const [selecionados, setSelecionados] = useState<Set<string>>(
+    new Set(ffs.map((f) => f.id)),
+  );
+  const [enviando, setEnviando]         = useState(false);
+  const [resultado, setResultado]       = useState<{ enviados: number; agendados: number } | null>(null);
+  const [erro, setErro]                 = useState<string | null>(null);
+
+  function toggleSel(id: string) {
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function handleConfirm() {
+    if (selecionados.size === 0) return;
+    if (modo === "agendar" && !dataAgendada) { setErro("Selecione data e hora."); return; }
+    setEnviando(true); setErro(null);
+
+    const agPara = modo === "agendar" ? new Date(dataAgendada).toISOString() : undefined;
+    await onConfirm(Array.from(selecionados), agPara);
+
+    // Feedback inline
+    setResultado({
+      enviados: modo === "agora" ? selecionados.size : 0,
+      agendados: modo === "agendar" ? selecionados.size : 0,
+    });
+    setEnviando(false);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+      onClick={onClose}
+    >
+      <div
+        className="rounded-2xl bg-white p-6 max-w-md w-full mx-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-base font-semibold" style={{ color: "#0F172A" }}>
+              Enviar para {titulo}
+            </h2>
+            <p className="text-xs mt-0.5" style={{ color: "#64748B" }}>
+              Selecione os fornecedores e quando enviar
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100">
+            <X className="w-4 h-4" style={{ color: "#94A3B8" }} />
+          </button>
+        </div>
+
+        {resultado ? (
+          /* Tela de sucesso */
+          <div className="text-center py-6">
+            <CheckCircle className="w-10 h-10 mx-auto mb-3" style={{ color: "#16A34A" }} />
+            <p className="font-semibold text-sm" style={{ color: "#0F172A" }}>
+              {resultado.enviados > 0
+                ? `${resultado.enviados} mensagem(ns) enviada(s)!`
+                : `${resultado.agendados} disparo(s) agendado(s)!`}
+            </p>
+            <button
+              onClick={onClose}
+              className="mt-5 px-4 py-2 rounded-lg text-xs font-medium text-white"
+              style={{ backgroundColor: "#2E60FF" }}
+            >
+              Fechar
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Lista de fornecedores */}
+            <div className="space-y-1.5 mb-5 max-h-48 overflow-y-auto">
+              {ffs.map((ff) => (
+                <label
+                  key={ff.id}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selecionados.has(ff.id)}
+                    onChange={() => toggleSel(ff.id)}
+                    className="w-4 h-4 rounded accent-blue-600"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate" style={{ color: "#0F172A" }}>
+                      {ff.fornecedor?.razao_social}
+                    </p>
+                    <p className="text-xs" style={{ color: "#94A3B8" }}>
+                      {ff.fornecedor?.contato_whatsapp}
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium" style={{ color: "#64748B" }}>
+                    {formatCurrency(ff.valor_total)}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {/* Modo de envio */}
+            <div className="flex gap-2 mb-4">
+              {(["agora", "agendar"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setModo(m)}
+                  className="flex-1 py-2 rounded-lg text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: modo === m ? "#2E60FF" : "#F1F5F9",
+                    color: modo === m ? "#fff" : "#64748B",
+                  }}
+                >
+                  {m === "agora" ? "📨 Enviar agora" : "⏰ Agendar"}
+                </button>
+              ))}
+            </div>
+
+            {modo === "agendar" && (
+              <div className="mb-4">
+                <input
+                  type="datetime-local"
+                  value={dataAgendada}
+                  min={minDatetimeLocal()}
+                  onChange={(e) => { setDataAgendada(e.target.value); setErro(null); }}
+                  className="w-full text-xs px-3 py-2 rounded-lg border outline-none"
+                  style={{ borderColor: "#F59E0B", color: "#334155" }}
+                />
+              </div>
+            )}
+
+            {erro && <p className="text-xs mb-3" style={{ color: "#DC2626" }}>{erro}</p>}
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleConfirm}
+                disabled={enviando || selecionados.size === 0}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold text-white transition-colors"
+                style={{
+                  backgroundColor: selecionados.size === 0 ? "#94A3B8" : "#2E60FF",
+                  opacity: enviando ? 0.7 : 1,
+                }}
+              >
+                {enviando && <Loader2 className="w-4 h-4 animate-spin" />}
+                {enviando
+                  ? "Processando..."
+                  : modo === "agora"
+                    ? `Enviar para ${selecionados.size}`
+                    : `Agendar para ${selecionados.size}`}
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-lg text-sm border"
+                style={{ borderColor: "#E2E8F0", color: "#64748B" }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── GroupSection ──────────────────────────────────────────────────────────────
 
 function GroupSection({
-  title, accentColor, accentBg, count, total, pendingCount = 0, children, defaultOpen = false,
+  title, accentColor, accentBg, count, total, pendingCount = 0,
+  children, defaultOpen = false,
+  loteAction,
 }: {
   title: string;
   accentColor: string;
@@ -527,6 +794,7 @@ function GroupSection({
   pendingCount?: number;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  loteAction?: { count: number; onClick: () => void };
 }) {
   const [aberto, setAberto] = useState(defaultOpen);
 
@@ -555,6 +823,16 @@ function GroupSection({
               {pendingCount} sem associação
             </span>
           )}
+          {loteAction && loteAction.count > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); loteAction.onClick(); }}
+              className="flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium transition-colors hover:opacity-80"
+              style={{ backgroundColor: "#EEF2FF", color: "#2E60FF" }}
+            >
+              <Users className="w-3 h-3" />
+              Enviar para todos ({loteAction.count})
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           <span className="text-sm font-bold" style={{ color: "#0F172A" }}>{formatCurrency(total)}</span>
@@ -580,8 +858,8 @@ export function DocumentacaoSection({
   isRevisor: boolean;
 }) {
   const [ffs, setFFs] = useState<FF[]>(fornecedores);
+  const [loteModal, setLoteModal] = useState<{ titulo: string; ffs: FF[] } | null>(null);
 
-  // Atualiza documento após aprovação/reprovação
   const handleDocAction = useCallback(async (
     ffId: string, docId: string, acao: "aprovar" | "reprovar", motivo?: string,
   ) => {
@@ -605,19 +883,29 @@ export function DocumentacaoSection({
     ));
   }, []);
 
-  // Transforma fornecedor pendente em associado após associação
   const handleAssociated = useCallback((ffId: string, fornecedor: FornecedorEmbed) => {
     setFFs((prev) => prev.map((ff) =>
       ff.id !== ffId ? ff : { ...ff, associado: true, fornecedor }
     ));
   }, []);
 
-  // Grupos: inclui tanto fornecedores associados quanto pendentes pelo tipo_iclips
+  async function handleEnviarLote(ffIds: string[], agendadoPara?: string) {
+    await fetch("/api/disparos/lote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ffIds, agendadoPara }),
+    });
+  }
+
   const midia    = ffs.filter((f) => f.fornecedor?.tipo === "midia"    || (f.associado === false && f.tipo_iclips === "midia"));
   const producao = ffs.filter((f) => f.fornecedor?.tipo === "producao" || (f.associado === false && f.tipo_iclips === "producao"));
 
   const midiasPendentes   = midia.filter(isFfPending).length;
   const producaoPendentes = producao.filter(isFfPending).length;
+
+  // FFs elegíveis para envio em lote (associados + com WhatsApp)
+  const midiaComWpp    = midia.filter((f)    => !isFfPending(f) && f.fornecedor?.contato_whatsapp && f.link_token);
+  const producaoComWpp = producao.filter((f) => !isFfPending(f) && f.fornecedor?.contato_whatsapp && f.link_token);
 
   const totalMidia    = midia.reduce((s, f) => s + (f.valor_total ?? 0), 0);
   const totalProducao = producao.reduce((s, f) => s + (f.valor_total ?? 0), 0);
@@ -641,6 +929,10 @@ export function DocumentacaoSection({
         <GroupSection
           title="Mídia" accentColor="#2E60FF" accentBg="#EEF2FF"
           count={midia.length} total={totalMidia} pendingCount={midiasPendentes}
+          loteAction={isRevisor && midiaComWpp.length > 0 ? {
+            count: midiaComWpp.length,
+            onClick: () => setLoteModal({ titulo: "Mídia", ffs: midiaComWpp }),
+          } : undefined}
         >
           {midia.map((ff) =>
             isFfPending(ff) ? (
@@ -657,6 +949,10 @@ export function DocumentacaoSection({
         <GroupSection
           title="Produção" accentColor="#7C3AED" accentBg="#F5F3FF"
           count={producao.length} total={totalProducao} pendingCount={producaoPendentes}
+          loteAction={isRevisor && producaoComWpp.length > 0 ? {
+            count: producaoComWpp.length,
+            onClick: () => setLoteModal({ titulo: "Produção", ffs: producaoComWpp }),
+          } : undefined}
         >
           {producao.map((ff) =>
             isFfPending(ff) ? (
@@ -699,6 +995,16 @@ export function DocumentacaoSection({
             </table>
           </div>
         </GroupSection>
+      )}
+
+      {/* Modal de envio em lote */}
+      {loteModal && (
+        <LoteModal
+          titulo={loteModal.titulo}
+          ffs={loteModal.ffs}
+          onClose={() => setLoteModal(null)}
+          onConfirm={handleEnviarLote}
+        />
       )}
     </div>
   );
