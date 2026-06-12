@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Phone, Mail, User, Edit2, Check, X, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Building2, Phone, Mail, User, Edit2, Check, X, Loader2, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 
 type Fornecedor = {
   id: string;
@@ -63,10 +63,16 @@ function FornecedorRow({ fornecedor: initial }: { fornecedor: Fornecedor }) {
     setEditando(false);
   }
 
-  const semContato = !forn.contato_nome && !forn.contato_whatsapp && !forn.contato_email;
+  const semWa    = !forn.contato_whatsapp;
+  const semEmail = !forn.contato_email;
+  const semNome  = !forn.contato_nome;
+  const incompleto = semWa || semEmail || semNome;
 
   return (
-    <div style={{ borderBottom: "1px solid #F1F5F9" }}>
+    <div style={{
+      borderBottom: "1px solid #F1F5F9",
+      backgroundColor: incompleto && !editando ? "#FFFBEB" : "white",
+    }}>
       {/* Linha principal */}
       <div className="flex items-center gap-4 px-5 py-3">
         {/* Empresa */}
@@ -79,32 +85,46 @@ function FornecedorRow({ fornecedor: initial }: { fornecedor: Fornecedor }) {
 
         {/* Contatos (modo visualização) */}
         {!editando && (
-          <div className="flex items-center gap-4 flex-shrink-0">
-            {semContato ? (
-              <span className="text-xs italic" style={{ color: "#F59E0B" }}>
-                ⚠ Sem contato
+          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap justify-end">
+            {/* Campos preenchidos */}
+            {forn.contato_nome && (
+              <div className="flex items-center gap-1.5">
+                <User className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                <span className="text-xs" style={{ color: "#334155" }}>{forn.contato_nome}</span>
+              </div>
+            )}
+            {forn.contato_whatsapp && (
+              <div className="flex items-center gap-1.5">
+                <Phone className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                <span className="text-xs font-mono" style={{ color: "#334155" }}>{forn.contato_whatsapp}</span>
+              </div>
+            )}
+            {forn.contato_email && (
+              <div className="flex items-center gap-1.5">
+                <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                <span className="text-xs" style={{ color: "#334155" }}>{forn.contato_email}</span>
+              </div>
+            )}
+            {/* Badges dos campos faltando */}
+            {semNome && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: "#F1F5F9", color: "#94A3B8" }}>
+                Sem nome
               </span>
-            ) : (
-              <>
-                {forn.contato_nome && (
-                  <div className="flex items-center gap-1.5">
-                    <User className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
-                    <span className="text-xs" style={{ color: "#334155" }}>{forn.contato_nome}</span>
-                  </div>
-                )}
-                {forn.contato_whatsapp && (
-                  <div className="flex items-center gap-1.5">
-                    <Phone className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
-                    <span className="text-xs font-mono" style={{ color: "#334155" }}>{forn.contato_whatsapp}</span>
-                  </div>
-                )}
-                {forn.contato_email && (
-                  <div className="flex items-center gap-1.5">
-                    <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
-                    <span className="text-xs" style={{ color: "#334155" }}>{forn.contato_email}</span>
-                  </div>
-                )}
-              </>
+            )}
+            {semWa && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: "#FEF2F2", color: "#DC2626" }}>
+                <AlertTriangle className="w-3 h-3" />
+                Sem WhatsApp
+              </span>
+            )}
+            {semEmail && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: "#FEF3C7", color: "#D97706" }}>
+                <AlertTriangle className="w-3 h-3" />
+                Sem email
+              </span>
             )}
           </div>
         )}
@@ -216,9 +236,17 @@ function GrupoFornecedores({
   fornecedores: Fornecedor[];
 }) {
   const [aberto, setAberto] = useState(true);
-  const semContato = fornecedores.filter(
-    (f) => !f.contato_nome && !f.contato_whatsapp && !f.contato_email,
-  ).length;
+
+  const semWa    = fornecedores.filter((f) => !f.contato_whatsapp).length;
+  const semEmail = fornecedores.filter((f) => !f.contato_email).length;
+  const semNome  = fornecedores.filter((f) => !f.contato_nome).length;
+
+  // Incompletos (qualquer campo faltando) aparecem primeiro
+  const sorted = [...fornecedores].sort((a, b) => {
+    const aInc = !a.contato_whatsapp || !a.contato_email || !a.contato_nome ? 0 : 1;
+    const bInc = !b.contato_whatsapp || !b.contato_email || !b.contato_nome ? 0 : 1;
+    return aInc - bInc;
+  });
 
   return (
     <div className="rounded-xl border bg-white overflow-hidden mb-4" style={{ borderColor: "#E2E8F0" }}>
@@ -227,32 +255,42 @@ function GrupoFornecedores({
         className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors"
         style={{ borderBottom: aberto ? "1px solid #E2E8F0" : "none" }}
       >
-        <div className="flex items-center gap-3">
-          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accentColor }} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
           <span className="text-sm font-semibold" style={{ color: "#0F172A" }}>{titulo}</span>
-          <span
-            className="text-xs px-2 py-0.5 rounded-full font-medium"
-            style={{ backgroundColor: accentBg, color: accentColor }}
-          >
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+            style={{ backgroundColor: accentBg, color: accentColor }}>
             {fornecedores.length} {fornecedores.length === 1 ? "fornecedor" : "fornecedores"}
           </span>
-          {semContato > 0 && (
-            <span
-              className="text-xs px-2 py-0.5 rounded-full font-medium"
-              style={{ backgroundColor: "#FEF3C7", color: "#D97706" }}
-            >
-              {semContato} sem contato
+          {semWa > 0 && (
+            <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{ backgroundColor: "#FEF2F2", color: "#DC2626" }}>
+              <AlertTriangle className="w-3 h-3" />
+              {semWa} sem WhatsApp
+            </span>
+          )}
+          {semEmail > 0 && (
+            <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{ backgroundColor: "#FEF3C7", color: "#D97706" }}>
+              <AlertTriangle className="w-3 h-3" />
+              {semEmail} sem email
+            </span>
+          )}
+          {semNome > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{ backgroundColor: "#F1F5F9", color: "#64748B" }}>
+              {semNome} sem nome
             </span>
           )}
         </div>
         {aberto
-          ? <ChevronUp className="w-4 h-4" style={{ color: "#94A3B8" }} />
-          : <ChevronDown className="w-4 h-4" style={{ color: "#94A3B8" }} />}
+          ? <ChevronUp className="w-4 h-4 flex-shrink-0" style={{ color: "#94A3B8" }} />
+          : <ChevronDown className="w-4 h-4 flex-shrink-0" style={{ color: "#94A3B8" }} />}
       </button>
 
       {aberto && (
         <div>
-          {fornecedores.map((f) => (
+          {sorted.map((f) => (
             <FornecedorRow key={f.id} fornecedor={f} />
           ))}
         </div>
@@ -284,8 +322,34 @@ export function FornecedoresConfig({ fornecedores }: { fornecedores: Fornecedor[
     );
   }
 
+  const totalSemWa    = fornecedores.filter((f) => !f.contato_whatsapp).length;
+  const totalSemEmail = fornecedores.filter((f) => !f.contato_email).length;
+  const totalBloqueados = fornecedores.filter(
+    (f) => !f.contato_whatsapp || !f.contato_email,
+  ).length;
+
   return (
     <div>
+      {/* Banner de alerta se há fornecedores bloqueados */}
+      {totalBloqueados > 0 && (
+        <div
+          className="flex items-start gap-3 p-4 rounded-xl mb-5"
+          style={{ backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}
+        >
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#DC2626" }} />
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "#991B1B" }}>
+              {totalBloqueados} {totalBloqueados === 1 ? "fornecedor bloqueado" : "fornecedores bloqueados"}
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: "#B91C1C" }}>
+              Sem WhatsApp ou email cadastrado, mensagens automáticas não serão enviadas a eles.
+              {totalSemWa > 0 && ` · ${totalSemWa} sem WhatsApp`}
+              {totalSemEmail > 0 && ` · ${totalSemEmail} sem email`}
+            </p>
+          </div>
+        </div>
+      )}
+
       {midia.length > 0 && (
         <GrupoFornecedores
           titulo="Mídia"
