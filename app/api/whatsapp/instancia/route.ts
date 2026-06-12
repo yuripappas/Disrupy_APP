@@ -42,7 +42,32 @@ export async function GET() {
     rawState === 'connecting' ? 'conectando' :
     'close';
 
-  const number: string | null = data?.instance?.ownerJid ?? null;
+  // ownerJid pode vir em campos diferentes dependendo da versão da API
+  let number: string | null =
+    data?.instance?.ownerJid ??
+    data?.instance?.owner    ??
+    data?.ownerJid           ??
+    null;
+
+  // Na Evolution API v2 o ownerJid não vem no connectionState —
+  // busca em fetchInstances quando conectado e o número ainda não foi encontrado
+  if (status === 'open' && !number) {
+    try {
+      const instRes = await fetch(
+        `${BASE_URL}/instance/fetchInstances?instanceName=${INSTANCE_NAME}`,
+        { headers: H },
+      );
+      if (instRes.ok) {
+        const instData = await instRes.json();
+        const inst = Array.isArray(instData) ? instData[0] : instData;
+        number =
+          inst?.ownerJid            ??
+          inst?.instance?.ownerJid  ??
+          inst?.owner               ??
+          null;
+      }
+    } catch { /* silencioso — exibe apenas "Conectado" sem número */ }
+  }
 
   // Quando conectando, busca QR code para exibir no modal
   let qrCode: string | null = null;
