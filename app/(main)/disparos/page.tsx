@@ -53,7 +53,7 @@ export default async function DisparosPage() {
   ) as FFRow[];
 
   return (
-    <div className="p-8 max-w-7xl">
+    <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold" style={{ color: "#0F172A" }}>
           Central de Disparos

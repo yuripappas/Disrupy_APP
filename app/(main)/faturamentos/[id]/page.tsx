@@ -73,7 +73,7 @@ export default async function FaturamentoDetailPage({
   const fornecedoresJaAdicionados = (ffIds ?? []).map((r: { fornecedor_id: string }) => r.fornecedor_id);
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-8">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 mb-6">
         <Link href="/faturamentos" className="flex items-center gap-1 text-sm" style={{ color: "#64748B" }}>
