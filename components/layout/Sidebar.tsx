@@ -5,18 +5,19 @@ import Image from "next/image";
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, FileText, Users, ShieldCheck, Settings, LogOut,
+  LayoutDashboard, FileText, Users, ShieldCheck, Settings, LogOut, MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { MeuPerfilModal } from "@/components/perfil/MeuPerfilModal";
 
 const NAV_ITEMS = [
-  { href: "/dashboard",     label: "Dashboard",     icon: LayoutDashboard, gestorOnly: false },
-  { href: "/faturamentos",  label: "Faturamentos",  icon: FileText,        gestorOnly: false },
-  { href: "/fornecedores",  label: "Fornecedores",  icon: Users,           gestorOnly: false },
-  { href: "/certidoes",     label: "Certidões",     icon: ShieldCheck,     gestorOnly: false },
-  { href: "/configuracoes", label: "Configurações", icon: Settings,        gestorOnly: true  },
+  { href: "/dashboard",     label: "Dashboard",         icon: LayoutDashboard, gestorOnly: false },
+  { href: "/faturamentos",  label: "Faturamentos",      icon: FileText,        gestorOnly: false },
+  { href: "/disparos",      label: "Central de Envios", icon: MessageSquare,   gestorOnly: false },
+  { href: "/fornecedores",  label: "Fornecedores",      icon: Users,           gestorOnly: false },
+  { href: "/certidoes",     label: "Certidões",         icon: ShieldCheck,     gestorOnly: false },
+  { href: "/configuracoes", label: "Configurações",     icon: Settings,        gestorOnly: true  },
 ];
 
 const ROLE_LABEL: Record<string, string> = {

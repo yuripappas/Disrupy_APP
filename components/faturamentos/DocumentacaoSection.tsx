@@ -5,13 +5,21 @@ import {
   ChevronDown, ChevronUp, FileText, ExternalLink,
   CheckCircle, XCircle, Clock, Check, X, Loader2,
   Copy, Link2, AlertTriangle, Search, Film, Send, Calendar,
-  Users, UserPlus, Phone, Mail, User,
+  Users, UserPlus, Phone, Mail, User, MessageSquare, ArrowUpRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeName } from "@/lib/iclips/parser";
 import { formatCurrency } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+type Disparo = {
+  id: string;
+  status: string;
+  created_at: string;
+  enviado_em: string | null;
+  agendado_para: string | null;
+};
 
 type Arquivo = {
   id: string;
@@ -64,6 +72,7 @@ type FF = {
   tipo_iclips: string | null;
   fornecedor: FornecedorEmbed | null;
   documentos: Documento[];
+  disparos: Disparo[];
 };
 
 type CustoInterno = {
@@ -1043,6 +1052,38 @@ export function DocumentacaoSection({
 
   const hasAny = midia.length > 0 || producao.length > 0 || custosInternos.length > 0;
 
+  // ── Resumo de disparos ──────────────────────────────────────────────────────
+  // Apenas fornecedores elegíveis (associados + WhatsApp + link)
+  const elegíveis = ffs.filter(
+    (f) => !isFfPending(f) && f.fornecedor?.contato_whatsapp && f.link_token,
+  );
+
+  function getLastDisparoStatus(ff: FF): "nao_enviado" | "agendado" | "enviado" | "falhou" {
+    const sorted = [...(ff.disparos ?? [])].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+    const last = sorted[0];
+    if (!last) return "nao_enviado";
+    if (last.status === "agendado") return "agendado";
+    if (last.status === "enviado")  return "enviado";
+    return "falhou";
+  }
+
+  function isRespondeu(ff: FF) {
+    const docs = ff.documentos ?? [];
+    return docs.length > 0 && docs.every((d) => d.status !== "pendente");
+  }
+
+  const resumo = {
+    total:      elegíveis.length,
+    enviados:   elegíveis.filter((f) => getLastDisparoStatus(f) === "enviado").length,
+    agendados:  elegíveis.filter((f) => getLastDisparoStatus(f) === "agendado").length,
+    responderam:elegíveis.filter(isRespondeu).length,
+    pendentes:  elegíveis.filter((f) => getLastDisparoStatus(f) === "nao_enviado").length,
+    semWpp:     ffs.filter((f) => !isFfPending(f) && !f.fornecedor?.contato_whatsapp).length,
+  };
+  // ───────────────────────────────────────────────────────────────────────────
+
   if (!hasAny) {
     return (
       <div className="rounded-xl border p-12 text-center" style={{ borderColor: "#E2E8F0", borderStyle: "dashed" }}>
@@ -1054,6 +1095,62 @@ export function DocumentacaoSection({
 
   return (
     <div>
+      {/* Painel resumo de disparos */}
+      {elegíveis.length > 0 && (
+        <div
+          className="rounded-xl border px-5 py-3.5 mb-4 flex items-center justify-between flex-wrap gap-3"
+          style={{ borderColor: "#E2E8F0", backgroundColor: "#F8FAFC" }}
+        >
+          <div className="flex items-center gap-1.5 flex-wrap gap-y-2">
+            <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#64748B" }} />
+            <span className="text-xs font-medium mr-2" style={{ color: "#64748B" }}>Disparos:</span>
+
+            {resumo.responderam > 0 && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: "#ECFDF5", color: "#059669" }}>
+                <CheckCircle className="w-3 h-3" />
+                {resumo.responderam} responderam
+              </span>
+            )}
+            {resumo.enviados > 0 && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: "#EEF2FF", color: "#2E60FF" }}>
+                <Send className="w-3 h-3" />
+                {resumo.enviados} enviados
+              </span>
+            )}
+            {resumo.agendados > 0 && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: "#F5F3FF", color: "#7C3AED" }}>
+                <Calendar className="w-3 h-3" />
+                {resumo.agendados} agendados
+              </span>
+            )}
+            {resumo.pendentes > 0 && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: "#FFFBEB", color: "#D97706" }}>
+                <Clock className="w-3 h-3" />
+                {resumo.pendentes} não enviados
+              </span>
+            )}
+            {resumo.semWpp > 0 && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: "#F1F5F9", color: "#94A3B8" }}>
+                {resumo.semWpp} sem WhatsApp
+              </span>
+            )}
+          </div>
+
+          <a
+            href="/disparos"
+            className="flex items-center gap-1 text-xs font-medium flex-shrink-0"
+            style={{ color: "#2E60FF" }}
+          >
+            Ver central <ArrowUpRight className="w-3 h-3" />
+          </a>
+        </div>
+      )}
+
       {/* Mídia */}
       {midia.length > 0 && (
         <GroupSection
