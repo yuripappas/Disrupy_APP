@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronUp, FileText, ExternalLink,
   CheckCircle, XCircle, Clock, Check, X, Loader2,
   Copy, Link2, AlertTriangle, Search, Film, Send, Calendar,
-  Users,
+  Users, UserPlus, Phone, Mail, User,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeName } from "@/lib/iclips/parser";
@@ -37,14 +37,18 @@ type DbFornecedorSimple = {
   cnpj: string;
   tipo: string;
   contato_nome: string | null;
+  contato_whatsapp: string | null;
+  contato_email: string | null;
 };
 
 type FornecedorEmbed = {
+  id: string;
   razao_social: string;
   cnpj: string;
   tipo: string;
   contato_nome: string | null;
   contato_whatsapp: string | null;
+  contato_email: string | null;
 };
 
 type FF = {
@@ -245,7 +249,42 @@ function FornecedorCard({
   const [agendando, setAgendando]             = useState(false);
   const [agendadoEm, setAgendadoEm]           = useState<string | null>(null);
 
-  const fornecedor = ff.fornecedor!;
+  // Contato inline (quando fornecedor não tem WhatsApp)
+  const [fornecedorLocal, setFornecedorLocal] = useState(ff.fornecedor!);
+  const [adicionandoContato, setAdicionandoContato] = useState(false);
+  const [salvandoContato, setSalvandoContato]       = useState(false);
+  const [erroContato, setErroContato]               = useState<string | null>(null);
+  const [contatoForm, setContatoForm]               = useState({
+    contato_nome:     ff.fornecedor?.contato_nome     ?? "",
+    contato_whatsapp: ff.fornecedor?.contato_whatsapp ?? "",
+    contato_email:    ff.fornecedor?.contato_email    ?? "",
+  });
+
+  async function salvarContato() {
+    setSalvandoContato(true);
+    setErroContato(null);
+    const res = await fetch(`/api/fornecedores/${fornecedorLocal.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contato_nome:     contatoForm.contato_nome.trim()     || null,
+        contato_whatsapp: contatoForm.contato_whatsapp.trim() || null,
+        contato_email:    contatoForm.contato_email.trim()    || null,
+      }),
+    });
+    const data = await res.json();
+    setSalvandoContato(false);
+    if (!res.ok) { setErroContato(data.error ?? "Erro ao salvar"); return; }
+    setFornecedorLocal((prev) => ({
+      ...prev,
+      contato_nome:     data.fornecedor.contato_nome,
+      contato_whatsapp: data.fornecedor.contato_whatsapp,
+      contato_email:    data.fornecedor.contato_email,
+    }));
+    setAdicionandoContato(false);
+  }
+
+  const fornecedor = fornecedorLocal;
   const completos = ff.documentos.filter((d) => d.status === "aprovado" || d.status === "enviado").length;
   const total     = ff.documentos.length;
   const pct       = total > 0 ? Math.round((completos / total) * 100) : 0;
@@ -353,6 +392,21 @@ function FornecedorCard({
                 {copied ? "Copiado!" : "Copiar link"}
               </button>
 
+              {/* Sem WhatsApp → botão Adicionar contato */}
+              {!fornecedor.contato_whatsapp && isRevisor && (
+                <button
+                  onClick={() => { setAdicionandoContato((v) => !v); setErroContato(null); }}
+                  className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md font-medium transition-colors"
+                  style={{
+                    backgroundColor: adicionandoContato ? "#EEF2FF" : "#F1F5F9",
+                    color: adicionandoContato ? "#2E60FF" : "#64748B",
+                  }}
+                >
+                  <UserPlus className="w-3 h-3" />
+                  {adicionandoContato ? "Cancelar" : "Adicionar contato"}
+                </button>
+              )}
+
               {/* Botões WhatsApp */}
               {fornecedor.contato_whatsapp && isRevisor && (
                 <>
@@ -422,6 +476,80 @@ function FornecedorCard({
         )}
       </div>
 
+      {/* Painel de adição de contato */}
+      {adicionandoContato && (
+        <div className="px-5 py-4 space-y-3" style={{ borderTop: "1px solid #E2E8F0", backgroundColor: "#F8FAFC" }}>
+          <p className="text-xs font-semibold" style={{ color: "#334155" }}>
+            Adicionar contato — será salvo no cadastro do fornecedor
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <label className="block">
+              <span className="text-xs font-medium block mb-1" style={{ color: "#64748B" }}>Nome</span>
+              <div className="flex items-center gap-1.5 rounded-lg border px-2 py-1.5 bg-white" style={{ borderColor: "#CBD5E1" }}>
+                <User className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                <input
+                  type="text"
+                  value={contatoForm.contato_nome}
+                  onChange={(e) => setContatoForm((f) => ({ ...f, contato_nome: e.target.value }))}
+                  placeholder="João Silva"
+                  className="flex-1 text-xs outline-none bg-transparent"
+                  style={{ color: "#0F172A" }}
+                />
+              </div>
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium block mb-1" style={{ color: "#64748B" }}>WhatsApp</span>
+              <div className="flex items-center gap-1.5 rounded-lg border px-2 py-1.5 bg-white" style={{ borderColor: "#CBD5E1" }}>
+                <Phone className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                <input
+                  type="tel"
+                  value={contatoForm.contato_whatsapp}
+                  onChange={(e) => setContatoForm((f) => ({ ...f, contato_whatsapp: e.target.value }))}
+                  placeholder="5582999999999"
+                  className="flex-1 text-xs font-mono outline-none bg-transparent"
+                  style={{ color: "#0F172A" }}
+                />
+              </div>
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium block mb-1" style={{ color: "#64748B" }}>E-mail</span>
+              <div className="flex items-center gap-1.5 rounded-lg border px-2 py-1.5 bg-white" style={{ borderColor: "#CBD5E1" }}>
+                <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                <input
+                  type="email"
+                  value={contatoForm.contato_email}
+                  onChange={(e) => setContatoForm((f) => ({ ...f, contato_email: e.target.value }))}
+                  placeholder="contato@empresa.com"
+                  className="flex-1 text-xs outline-none bg-transparent"
+                  style={{ color: "#0F172A" }}
+                />
+              </div>
+            </label>
+          </div>
+          {erroContato && <p className="text-xs" style={{ color: "#DC2626" }}>⚠ {erroContato}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={salvarContato}
+              disabled={salvandoContato}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+              style={{ backgroundColor: salvandoContato ? "#94A3B8" : "#2E60FF" }}
+            >
+              {salvandoContato
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <Check className="w-3 h-3" />}
+              {salvandoContato ? "Salvando..." : "Salvar contato"}
+            </button>
+            <button
+              onClick={() => { setAdicionandoContato(false); setErroContato(null); }}
+              className="px-3 py-1.5 rounded-lg text-xs border"
+              style={{ borderColor: "#E2E8F0", color: "#64748B" }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Erro de envio */}
       {erroEnvio && (
         <div className="px-5 py-2" style={{ backgroundColor: "#FEF2F2" }}>
@@ -453,7 +581,7 @@ function PendingFornecedorCard({
       const supabase = createClient();
       const { data } = await supabase
         .from("fornecedores")
-        .select("id, razao_social, cnpj, tipo, contato_nome")
+        .select("id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp, contato_email")
         .eq("ativo", true)
         .order("razao_social");
       setDbFornecedores((data ?? []) as DbFornecedorSimple[]);
@@ -479,11 +607,13 @@ function PendingFornecedorCard({
       return;
     }
     onAssociated(ff.id, {
-      razao_social: forn.razao_social,
-      cnpj: forn.cnpj,
-      tipo: forn.tipo,
-      contato_nome: forn.contato_nome,
-      contato_whatsapp: null,
+      id:               forn.id,
+      razao_social:     forn.razao_social,
+      cnpj:             forn.cnpj,
+      tipo:             forn.tipo,
+      contato_nome:     forn.contato_nome,
+      contato_whatsapp: forn.contato_whatsapp,
+      contato_email:    forn.contato_email,
     });
   }
 

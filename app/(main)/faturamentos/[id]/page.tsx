@@ -43,7 +43,7 @@ export default async function FaturamentoDetailPage({
       faturamento_fornecedores (
         id, valor, honorarios, valor_total, prazo_dias, status, link_token,
         nome_iclips, associado, tipo_iclips,
-        fornecedor:fornecedores ( razao_social, cnpj, tipo, contato_nome, contato_whatsapp ),
+        fornecedor:fornecedores ( id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp, contato_email ),
         documentos ( id, tipo, label, status, arquivo_url, reprovacao_motivo,
           documento_arquivos ( id, arquivo_url, nome_arquivo, tamanho_bytes, created_at ) )
       )

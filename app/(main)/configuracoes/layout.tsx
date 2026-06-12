@@ -10,8 +10,9 @@ export default async function ConfiguracoesLayout({ children }: { children: Reac
   if (!isGestor) redirect("/dashboard");
 
   const tabs = [
-    { href: "/configuracoes", label: "Integrações" },
     ...(isGestor ? [{ href: "/configuracoes/usuarios", label: "Usuários" }] : []),
+    ...(isGestor ? [{ href: "/configuracoes/fornecedores", label: "Fornecedores" }] : []),
+    { href: "/configuracoes", label: "Integrações" },
   ];
 
   return (
