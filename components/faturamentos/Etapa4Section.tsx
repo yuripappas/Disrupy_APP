@@ -13,7 +13,10 @@ type FornecedorNf = {
   ffId: string;
   razaoSocial: string;
   cnpj: string | null;
-  valorTotal: number;
+  /** Valor base do fornecedor (sem honorários) — usado para cálculos */
+  valor: number;
+  /** Valor Líquido extraído da NFS-e em PDF — usado para exibição na discriminação */
+  valorNf: string | null;
   numeroNf: string | null;
   nfStatus: string | null;
 };
@@ -62,10 +65,12 @@ function buildHeader(fat: { nomeCampanha: string; jobId: string | null; proposta
 }
 
 function buildLinha(f: FornecedorNf): string {
-  const nf   = `NF ${f.numeroNf ?? "???"}`;
+  const nf   = `NFS-e ${f.numeroNf ?? "???"}`;
   const nome = f.razaoSocial.toUpperCase();
   const cnpj = f.cnpj ? `CNPJ: ${formatCnpj(f.cnpj)}` : "";
-  const valor = `R$ ${formatCurrency(f.valorTotal).replace("R$ ", "").trim()}`;
+  // Usa valor líquido extraído do PDF; senão o valor base sem honorários
+  const valorStr = f.valorNf ?? formatCurrency(f.valor).replace("R$ ", "").trim();
+  const valor = `R$ ${valorStr}`;
   return [nf, nome, cnpj, valor].filter(Boolean).join(" | ");
 }
 
@@ -89,7 +94,7 @@ function gerarNfseBlocos(
 
   function fecharBloco() {
     if (grupo.length === 0) return;
-    const subtotal = grupo.reduce((s, i) => s + fornecedores[i].valorTotal, 0);
+    const subtotal = grupo.reduce((s, i) => s + fornecedores[i].valor, 0);
     const corpo = grupo.map((i) => linhas[i]).join("\n");
     const texto = `${header}\n\n${corpo}${totalSufixo(subtotal)}`;
     blocos.push({ texto, subtotal });
@@ -98,7 +103,7 @@ function gerarNfseBlocos(
 
   for (let i = 0; i < fornecedores.length; i++) {
     const candidato = [...grupo, i];
-    const subtotal  = candidato.reduce((s, j) => s + fornecedores[j].valorTotal, 0);
+    const subtotal  = candidato.reduce((s, j) => s + fornecedores[j].valor, 0);
     const corpo     = candidato.map((j) => linhas[j]).join("\n");
     const texto     = `${header}\n\n${corpo}${totalSufixo(subtotal)}`;
 
@@ -342,7 +347,7 @@ export function Etapa4Section({
   const fat = { nomeCampanha, jobId, propostaId };
   const blocos = bloqueado ? [] : gerarNfseBlocos(fat, fornecedoresNf);
 
-  const totalGeral = fornecedoresNf.reduce((s, f) => s + f.valorTotal, 0);
+  const totalGeral = fornecedoresNf.reduce((s, f) => s + f.valor, 0);
   const certPorTipo = Object.fromEntries(certidoes.map((c) => [c.tipo, c]));
   const certPendentes = TIPOS_CERTIDOES.filter((t) => !certPorTipo[t.tipo]).length;
 

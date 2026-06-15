@@ -61,10 +61,25 @@ export default async function FaturamentoDetailPage({
   const fornecedores = fat.faturamento_fornecedores ?? [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const valorMidia      = fornecedores.filter((f: any) => f.fornecedor?.tipo === "midia"    || (f.associado === false && f.tipo_iclips === "midia")).reduce((s: number, f: { valor_total: number }) => s + (f.valor_total ?? 0), 0);
+  const ffMidia    = fornecedores.filter((f: any) => f.fornecedor?.tipo === "midia"    || (f.associado === false && f.tipo_iclips === "midia"));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const valorProducao   = fornecedores.filter((f: any) => f.fornecedor?.tipo === "producao" || (f.associado === false && f.tipo_iclips === "producao")).reduce((s: number, f: { valor_total: number }) => s + (f.valor_total ?? 0), 0);
+  const ffProducao = fornecedores.filter((f: any) => f.fornecedor?.tipo === "producao" || (f.associado === false && f.tipo_iclips === "producao"));
+
+  // Repasse = valor base do fornecedor (sem honorários) — o que sai para os fornecedores
+  const repasseMidia    = ffMidia.reduce((s: number, f: { valor: number })    => s + (f.valor    ?? 0), 0);
+  const repasseProducao = ffProducao.reduce((s: number, f: { valor: number }) => s + (f.valor    ?? 0), 0);
+
+  // Honorários = margem da agência sobre fornecedores externos
+  const honorariosMidia    = ffMidia.reduce((s: number, f: { honorarios: number })    => s + (f.honorarios ?? 0), 0);
+  const honorariosProducao = ffProducao.reduce((s: number, f: { honorarios: number }) => s + (f.honorarios ?? 0), 0);
+  const totalHonorarios    = honorariosMidia + honorariosProducao;
+
   const valorCustosInternos = custosInternos.reduce((s: number, c: { valor_total: number }) => s + (c.valor_total ?? 0), 0);
+
+  // Totais para os cards de resumo
+  const valorMidia    = repasseMidia    + honorariosMidia;
+  const valorProducao = repasseProducao + honorariosProducao;
+  const totalRepasse  = repasseMidia    + repasseProducao;
 
   // Get fornecedor_ids for the modal (to exclude already-added ones)
   const { data: ffIds } = await supabase
@@ -80,7 +95,8 @@ export default async function FaturamentoDetailPage({
     .eq("faturamento_id", id)
     .order("created_at");
 
-  // Fornecedores com NF para a discriminação (tipo midia + producao, associados)
+  // Fornecedores com NF para a discriminação (associados, excluindo não-associados)
+  // Usa f.valor (repasse base, sem honorários) — evita bitributação na NFS-e da agência
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fornecedoresNf = fornecedores
     .filter((f: any) => f.associado !== false && f.fornecedor)
@@ -91,7 +107,8 @@ export default async function FaturamentoDetailPage({
         ffId:        f.id,
         razaoSocial: f.fornecedor.razao_social,
         cnpj:        f.fornecedor.cnpj,
-        valorTotal:  f.valor_total ?? 0,
+        valor:       f.valor ?? 0,           // repasse ao fornecedor (sem honorários)
+        valorNf:     nfDoc.valor_nf ?? null, // valor líquido extraído do PDF
         numeroNf:    nfDoc.numero_nf ?? null,
         nfStatus:    nfDoc.numero_nf_status ?? null,
       }];
@@ -150,40 +167,60 @@ export default async function FaturamentoDetailPage({
         isRevisor={isRevisor}
       />
 
-      {/* Valores resumo — Custos Internos | Produção | Mídia | Total */}
+      {/* Valores resumo — Repasse | Honorários | Custos Internos | Total cliente */}
       {(valorMidia > 0 || valorProducao > 0 || valorCustosInternos > 0) && (
         <div className="grid grid-cols-4 gap-4 mb-6">
+
+          {/* Repasse Fornecedores */}
+          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
+            <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Repasse Fornecedores</p>
+            <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(totalRepasse)}</p>
+            <div className="mt-1.5 space-y-0.5">
+              {repasseProducao > 0 && (
+                <p className="text-xs flex items-center gap-1" style={{ color: "#94A3B8" }}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#7C3AED", display: "inline-block" }} />
+                  Produção: {formatCurrency(repasseProducao)}
+                </p>
+              )}
+              {repasseMidia > 0 && (
+                <p className="text-xs flex items-center gap-1" style={{ color: "#94A3B8" }}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#2E60FF", display: "inline-block" }} />
+                  Mídia: {formatCurrency(repasseMidia)}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Honorários da Agência */}
+          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
+            <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Honorários Agência</p>
+            <p className="text-lg font-bold" style={{ color: "#059669" }}>{formatCurrency(totalHonorarios)}</p>
+            <div className="mt-1.5 space-y-0.5">
+              {honorariosProducao > 0 && (
+                <p className="text-xs" style={{ color: "#94A3B8" }}>Produção: {formatCurrency(honorariosProducao)}</p>
+              )}
+              {honorariosMidia > 0 && (
+                <p className="text-xs" style={{ color: "#94A3B8" }}>Mídia: {formatCurrency(honorariosMidia)}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Custos Internos */}
           <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
             <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Custos Internos</p>
             <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(valorCustosInternos)}</p>
-            <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{custosInternos.length} item(ns)</p>
+            <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{custosInternos.length} item(ns) da agência</p>
           </div>
-          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
-            <div className="flex items-center gap-1.5 mb-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#7C3AED" }} />
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#94A3B8" }}>Produção</p>
-            </div>
-            <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(valorProducao)}</p>
-            <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {fornecedores.filter((f: any) => f.fornecedor?.tipo === "producao" || (f.associado === false && f.tipo_iclips === "producao")).length} fornecedor(es)
-            </p>
-          </div>
-          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
-            <div className="flex items-center gap-1.5 mb-1">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#2E60FF" }} />
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#94A3B8" }}>Mídia</p>
-            </div>
-            <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(valorMidia)}</p>
-            <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {fornecedores.filter((f: any) => f.fornecedor?.tipo === "midia" || (f.associado === false && f.tipo_iclips === "midia")).length} fornecedor(es)
-            </p>
-          </div>
+
+          {/* Total cobrado do cliente */}
           <div className="rounded-xl border p-4" style={{ borderColor: "#2E60FF", backgroundColor: "#EEF2FF" }}>
-            <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#2E60FF" }}>Total</p>
+            <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#2E60FF" }}>Total do Cliente</p>
             <p className="text-lg font-bold" style={{ color: "#00246D" }}>{formatCurrency(fat.valor_total ?? 0)}</p>
+            <p className="text-xs mt-1" style={{ color: "#2E60FF" }}>
+              repasse + hon. + interno
+            </p>
           </div>
+
         </div>
       )}
 
