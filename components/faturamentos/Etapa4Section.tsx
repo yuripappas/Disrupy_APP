@@ -57,58 +57,39 @@ function formatBytes(b: number): string {
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function buildHeader(fat: { nomeCampanha: string; jobId: string | null; propostaId: string | null }): string {
-  let header = `REFERENTE À CAMPANHA: ${fat.nomeCampanha}`;
-  if (fat.jobId) header += ` - ${fat.jobId}`;
-  if (fat.propostaId) header += ` (#${fat.propostaId})`;
-  return header;
-}
-
 function buildLinha(f: FornecedorNf): string {
-  const nf   = `NFS-e ${f.numeroNf ?? "???"}`;
-  const nome = f.razaoSocial.toUpperCase();
-  const cnpj = f.cnpj ? `CNPJ: ${formatCnpj(f.cnpj)}` : "";
-  // Usa valor líquido extraído do PDF; senão o valor base sem honorários
+  const nf       = `NFS-e ${f.numeroNf ?? "???"}`;
+  const nome     = f.razaoSocial.toUpperCase();
+  const cnpj     = f.cnpj ? `CNPJ: ${formatCnpj(f.cnpj)}` : "";
   const valorStr = f.valorNf ?? formatCurrency(f.valor).replace("R$ ", "").trim();
-  const valor = `R$ ${valorStr}`;
+  const valor    = `R$ ${valorStr}`;
   return [nf, nome, cnpj, valor].filter(Boolean).join(" | ");
 }
 
-// Divide fornecedores em grupos de NFS-e respeitando o limite de 2000 chars.
-// Retorna array de { texto: string; subtotal: number }
+// Divide os fornecedores em blocos respeitando o limite de 2000 chars do GISS.
+// Cada bloco contém apenas as linhas de NFS-e — sem cabeçalho nem rodapé.
 function gerarNfseBlocos(
-  fat: { nomeCampanha: string; jobId: string | null; propostaId: string | null },
   fornecedores: FornecedorNf[],
 ): { texto: string; subtotal: number }[] {
   if (fornecedores.length === 0) return [];
 
-  const header = buildHeader(fat);
   const linhas = fornecedores.map(buildLinha);
-
-  // Tenta encaixar todos em um bloco
-  const totalSufixo = (subtotal: number) =>
-    `\nVALOR TOTAL: R$ ${formatCurrency(subtotal).replace("R$ ", "").trim()}`;
-
   const blocos: { texto: string; subtotal: number }[] = [];
-  let grupo: number[] = []; // índices dos fornecedores no bloco atual
+  let grupo: number[] = [];
 
   function fecharBloco() {
     if (grupo.length === 0) return;
     const subtotal = grupo.reduce((s, i) => s + fornecedores[i].valor, 0);
-    const corpo = grupo.map((i) => linhas[i]).join("\n");
-    const texto = `${header}\n\n${corpo}${totalSufixo(subtotal)}`;
+    const texto    = grupo.map((i) => linhas[i]).join("\n");
     blocos.push({ texto, subtotal });
     grupo = [];
   }
 
   for (let i = 0; i < fornecedores.length; i++) {
     const candidato = [...grupo, i];
-    const subtotal  = candidato.reduce((s, j) => s + fornecedores[j].valor, 0);
-    const corpo     = candidato.map((j) => linhas[j]).join("\n");
-    const texto     = `${header}\n\n${corpo}${totalSufixo(subtotal)}`;
+    const texto     = candidato.map((j) => linhas[j]).join("\n");
 
     if (texto.length > LIMITE_GISS && grupo.length > 0) {
-      // Fecha o bloco atual sem o item i e começa novo
       fecharBloco();
       grupo = [i];
     } else {
@@ -119,6 +100,7 @@ function gerarNfseBlocos(
 
   return blocos;
 }
+
 
 // ── CopyButton ───────────────────────────────────────────────────────────────
 
@@ -344,8 +326,7 @@ export function Etapa4Section({
   );
   const bloqueado = nfPendentes.length > 0;
 
-  const fat = { nomeCampanha, jobId, propostaId };
-  const blocos = bloqueado ? [] : gerarNfseBlocos(fat, fornecedoresNf);
+  const blocos = bloqueado ? [] : gerarNfseBlocos(fornecedoresNf);
 
   const totalGeral = fornecedoresNf.reduce((s, f) => s + f.valor, 0);
   const certPorTipo = Object.fromEntries(certidoes.map((c) => [c.tipo, c]));
