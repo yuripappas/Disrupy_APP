@@ -32,10 +32,12 @@ export async function POST(req: NextRequest) {
     viewUrl:     string;
     fileName:    string;
     fileSize?:   number;
-    token?:      string;   // portal link_token
+    token?:      string;
+    numeroNf?:   string | null;
+    nfStatus?:   'extraido' | 'falhou' | 'pendente';
   };
 
-  const { documentoId, viewUrl, fileName, fileSize, token } = body;
+  const { documentoId, viewUrl, fileName, fileSize, token, numeroNf, nfStatus } = body;
 
   if (!documentoId || !viewUrl || !fileName) {
     return NextResponse.json({ error: 'Campos obrigatórios faltando' }, { status: 400 });
@@ -97,11 +99,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: arqErr?.message ?? 'Erro ao salvar arquivo' }, { status: 500 });
     }
 
-    // 4. Atualiza status do documento para "enviado"
-    await admin
-      .from('documentos')
-      .update({ status: 'enviado', arquivo_url: viewUrl })
-      .eq('id', documentoId);
+    // 4. Atualiza status do documento para "enviado" + NF se extraída
+    const docUpdate: Record<string, unknown> = { status: 'enviado', arquivo_url: viewUrl };
+    if (nfStatus) {
+      docUpdate.numero_nf_status = nfStatus;
+      if (numeroNf) docUpdate.numero_nf = numeroNf;
+    }
+    await admin.from('documentos').update(docUpdate).eq('id', documentoId);
 
     // 5. Verifica se todos os docs estão preenchidos → dispara confirmação
     void verificarConfirmacao(ff.id).catch((e) =>
@@ -141,10 +145,12 @@ export async function POST(req: NextRequest) {
     .eq('id', documentoId)
     .single();
 
-  await supabase
-    .from('documentos')
-    .update({ status: 'enviado', arquivo_url: viewUrl })
-    .eq('id', documentoId);
+  const docUpdateAuth: Record<string, unknown> = { status: 'enviado', arquivo_url: viewUrl };
+  if (nfStatus) {
+    docUpdateAuth.numero_nf_status = nfStatus;
+    if (numeroNf) docUpdateAuth.numero_nf = numeroNf;
+  }
+  await supabase.from('documentos').update(docUpdateAuth).eq('id', documentoId);
 
   if (docInfo?.faturamento_fornecedor_id) {
     void verificarConfirmacao(docInfo.faturamento_fornecedor_id).catch((e) =>

@@ -36,6 +36,8 @@ type Documento = {
   status: string;
   arquivo_url: string | null;
   reprovacao_motivo: string | null;
+  numero_nf: string | null;
+  numero_nf_status: string | null;
   documento_arquivos: Arquivo[];
 };
 
@@ -127,17 +129,23 @@ function DocRow({
   doc,
   isRevisor,
   onAction,
+  onNfAtualizado,
 }: {
   doc: Documento;
   isRevisor: boolean;
   onAction: (docId: string, acao: "aprovar" | "reprovar", motivo?: string) => Promise<void>;
+  onNfAtualizado?: (docId: string, numeroNf: string) => void;
 }) {
   const cfg = docStatusCfg[doc.status] ?? docStatusCfg.pendente;
   const { Icon } = cfg;
-  const [reprovando, setReprovando] = useState(false);
-  const [motivo, setMotivo]         = useState("");
-  const [loading, setLoading]       = useState<"aprovar" | "reprovar" | null>(null);
-  const [erro, setErro]             = useState("");
+  const [reprovando, setReprovando]   = useState(false);
+  const [motivo, setMotivo]           = useState("");
+  const [loading, setLoading]         = useState<"aprovar" | "reprovar" | null>(null);
+  const [erro, setErro]               = useState("");
+  const [editandoNf, setEditandoNf]   = useState(false);
+  const [nfInput, setNfInput]         = useState(doc.numero_nf ?? "");
+  const [salvandoNf, setSalvandoNf]   = useState(false);
+  const [erroNf, setErroNf]           = useState("");
 
   async function handleAprovar() {
     setLoading("aprovar"); setErro("");
@@ -151,7 +159,22 @@ function DocRow({
     setLoading(null); setReprovando(false); setMotivo("");
   }
 
+  async function handleSalvarNf() {
+    if (!nfInput.trim()) { setErroNf("Informe o número."); return; }
+    setSalvandoNf(true); setErroNf("");
+    const res = await fetch("/api/documentos", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentoId: doc.id, acao: "numero_nf", numeroNf: nfInput.trim() }),
+    });
+    setSalvandoNf(false);
+    if (!res.ok) { const j = await res.json(); setErroNf(j.error ?? "Erro ao salvar"); return; }
+    onNfAtualizado?.(doc.id, nfInput.trim());
+    setEditandoNf(false);
+  }
+
   const podeRevisar = isRevisor && doc.status === "enviado" && !!doc.arquivo_url;
+  const nfFalhou    = doc.tipo === "nf" && doc.status !== "pendente" && (!doc.numero_nf || doc.numero_nf_status === "falhou");
 
   return (
     <div style={{ borderBottom: "1px solid #F1F5F9" }}>
@@ -212,6 +235,72 @@ function DocRow({
           </p>
         </div>
       )}
+
+      {/* NF extraída com sucesso */}
+      {doc.tipo === "nf" && doc.numero_nf && doc.numero_nf_status !== "falhou" && (
+        <div className="mx-5 mb-3 px-3 py-1.5 rounded-lg flex items-center justify-between gap-2"
+          style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+          <p className="text-xs" style={{ color: "#15803D" }}>
+            <span className="font-semibold">NF {doc.numero_nf}</span>
+            {doc.numero_nf_status === "manual" ? " · inserido manualmente" : " · extraído do PDF"}
+          </p>
+          {isRevisor && (
+            <button onClick={() => { setEditandoNf(true); setNfInput(doc.numero_nf ?? ""); }}
+              className="text-xs underline flex-shrink-0" style={{ color: "#15803D" }}>
+              Editar
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* NF falhou na extração — alerta para inserção manual */}
+      {nfFalhou && !editandoNf && (
+        <div className="mx-5 mb-3 px-3 py-2 rounded-lg flex items-start justify-between gap-2"
+          style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
+          <div className="flex items-start gap-2 flex-1">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#D97706" }} />
+            <p className="text-xs" style={{ color: "#92400E" }}>
+              Não foi possível ler o nº da NF automaticamente. Digite manualmente para gerar a discriminação.
+            </p>
+          </div>
+          {isRevisor && (
+            <button onClick={() => setEditandoNf(true)}
+              className="text-xs font-semibold px-2 py-1 rounded-md flex-shrink-0"
+              style={{ backgroundColor: "#D97706", color: "#fff" }}>
+              Digitar NF
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Input manual de NF */}
+      {editandoNf && (
+        <div className="mx-5 mb-3 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              type="text"
+              value={nfInput}
+              onChange={(e) => setNfInput(e.target.value)}
+              placeholder="Ex: 001234"
+              className="flex-1 px-3 py-1.5 text-xs rounded-lg border outline-none font-mono"
+              style={{ borderColor: "#F59E0B", color: "#0F172A" }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSalvarNf(); }}
+            />
+            <button onClick={handleSalvarNf} disabled={salvandoNf}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+              style={{ backgroundColor: salvandoNf ? "#94A3B8" : "#D97706" }}>
+              {salvandoNf ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+              Salvar
+            </button>
+            <button onClick={() => { setEditandoNf(false); setErroNf(""); }}
+              className="text-xs px-2 py-1.5 rounded-lg border" style={{ borderColor: "#E2E8F0", color: "#64748B" }}>
+              Cancelar
+            </button>
+          </div>
+          {erroNf && <p className="text-xs" style={{ color: "#DC2626" }}>{erroNf}</p>}
+        </div>
+      )}
       {reprovando && (
         <div className="mx-5 mb-3 space-y-2">
           <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)}
@@ -241,11 +330,12 @@ function DocRow({
 // ── FornecedorCard ───────────────────────────────────────────────────────────
 
 function FornecedorCard({
-  ff, isRevisor, onDocAction,
+  ff, isRevisor, onDocAction, onNfAtualizado,
 }: {
   ff: FF;
   isRevisor: boolean;
   onDocAction: (ffId: string, docId: string, acao: "aprovar" | "reprovar", motivo?: string) => Promise<void>;
+  onNfAtualizado: (ffId: string, docId: string, numeroNf: string) => void;
 }) {
   const [copied, setCopied]           = useState(false);
   const [enviando, setEnviando]       = useState(false);
@@ -379,7 +469,8 @@ function FornecedorCard({
           })
           .map((doc) => (
             <DocRow key={doc.id} doc={doc} isRevisor={isRevisor}
-              onAction={(docId, acao, motivo) => onDocAction(ff.id, docId, acao, motivo)} />
+              onAction={(docId, acao, motivo) => onDocAction(ff.id, docId, acao, motivo)}
+              onNfAtualizado={(docId, nf) => onNfAtualizado(ff.id, docId, nf)} />
           ))}
       </div>
 
@@ -1022,6 +1113,17 @@ export function DocumentacaoSection({
     ));
   }, []);
 
+  const handleNfAtualizado = useCallback((ffId: string, docId: string, numeroNf: string) => {
+    setFFs((prev) => prev.map((ff) =>
+      ff.id !== ffId ? ff : {
+        ...ff,
+        documentos: ff.documentos.map((d) =>
+          d.id !== docId ? d : { ...d, numero_nf: numeroNf, numero_nf_status: "manual" }
+        ),
+      }
+    ));
+  }, []);
+
   const handleAssociated = useCallback((ffId: string, fornecedor: FornecedorEmbed) => {
     setFFs((prev) => prev.map((ff) =>
       ff.id !== ffId ? ff : { ...ff, associado: true, fornecedor }
@@ -1165,7 +1267,7 @@ export function DocumentacaoSection({
             isFfPending(ff) ? (
               <PendingFornecedorCard key={ff.id} ff={ff} onAssociated={handleAssociated} />
             ) : (
-              <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} onDocAction={handleDocAction} />
+              <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} onDocAction={handleDocAction} onNfAtualizado={handleNfAtualizado} />
             )
           )}
         </GroupSection>
@@ -1185,7 +1287,7 @@ export function DocumentacaoSection({
             isFfPending(ff) ? (
               <PendingFornecedorCard key={ff.id} ff={ff} onAssociated={handleAssociated} />
             ) : (
-              <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} onDocAction={handleDocAction} />
+              <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} onDocAction={handleDocAction} onNfAtualizado={handleNfAtualizado} />
             )
           )}
         </GroupSection>

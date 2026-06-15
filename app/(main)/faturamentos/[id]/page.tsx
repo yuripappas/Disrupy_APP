@@ -10,6 +10,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { FaturamentoDetailClient } from "./FaturamentoDetailClient";
 import { DocumentacaoSection } from "@/components/faturamentos/DocumentacaoSection";
 import { PipelineSection } from "@/components/faturamentos/PipelineSection";
+import { Etapa4Section } from "@/components/faturamentos/Etapa4Section";
 
 // ── Visual helpers ──────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ export default async function FaturamentoDetailPage({
         nome_iclips, associado, tipo_iclips,
         fornecedor:fornecedores ( id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp, contato_email ),
         documentos ( id, tipo, label, status, arquivo_url, reprovacao_motivo,
+          numero_nf, numero_nf_status,
           documento_arquivos ( id, arquivo_url, nome_arquivo, tamanho_bytes, created_at ) ),
         disparos ( id, status, created_at, enviado_em, agendado_para )
       )
@@ -71,6 +73,29 @@ export default async function FaturamentoDetailPage({
     .eq("faturamento_id", id);
 
   const fornecedoresJaAdicionados = (ffIds ?? []).map((r: { fornecedor_id: string }) => r.fornecedor_id);
+
+  const { data: certidoesData } = await supabase
+    .from("faturamento_certidoes")
+    .select("id, tipo, label, arquivo_url, nome_arquivo, tamanho_bytes")
+    .eq("faturamento_id", id)
+    .order("created_at");
+
+  // Fornecedores com NF para a discriminação (tipo midia + producao, associados)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fornecedoresNf = fornecedores
+    .filter((f: any) => f.associado !== false && f.fornecedor)
+    .flatMap((f: any) => {
+      const nfDoc = (f.documentos ?? []).find((d: any) => d.tipo === "nf");
+      if (!nfDoc) return [];
+      return [{
+        ffId:        f.id,
+        razaoSocial: f.fornecedor.razao_social,
+        cnpj:        f.fornecedor.cnpj,
+        valorTotal:  f.valor_total ?? 0,
+        numeroNf:    nfDoc.numero_nf ?? null,
+        nfStatus:    nfDoc.numero_nf_status ?? null,
+      }];
+    });
 
   return (
     <div className="p-8">
@@ -165,7 +190,7 @@ export default async function FaturamentoDetailPage({
       {/* Documentação agrupada — Mídia, Produção, Custos Internos */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold" style={{ color: "#0F172A" }}>Documentação</h2>
+          <h2 className="text-sm font-semibold" style={{ color: "#0F172A" }}>Documentação dos Fornecedores</h2>
           <FaturamentoDetailClient
             faturamentoId={id}
             fornecedoresJaAdicionados={fornecedoresJaAdicionados}
@@ -174,6 +199,18 @@ export default async function FaturamentoDetailPage({
         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
         <DocumentacaoSection fornecedores={fornecedores as any} custosInternos={custosInternos} isRevisor={isRevisor} />
       </div>
+
+      {/* Etapa 4 — Documentação da Agência */}
+      <Etapa4Section
+        faturamentoId={id}
+        nomeCampanha={fat.nome_campanha}
+        jobId={fat.iclips_job_id ?? null}
+        propostaId={fat.iclips_proposta_id ?? null}
+        clienteTipo={fat.cliente_tipo}
+        clienteNome={fat.cliente_nome}
+        fornecedoresNf={fornecedoresNf}
+        certidoesIniciais={certidoesData ?? []}
+      />
     </div>
   );
 }

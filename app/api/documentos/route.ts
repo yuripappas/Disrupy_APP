@@ -20,13 +20,27 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Sem permissão. Apenas Gestor e Faturamento podem revisar documentos." }, { status: 403 });
   }
 
-  const { documentoId, acao, motivo } = await req.json();
+  const { documentoId, acao, motivo, numeroNf } = await req.json();
 
   if (!documentoId || !acao) {
     return NextResponse.json({ error: "documentoId e acao são obrigatórios" }, { status: 400 });
   }
+
+  // ── Atualização manual do número de NF ──────────────────────────────────────
+  if (acao === "numero_nf") {
+    if (!numeroNf?.trim()) {
+      return NextResponse.json({ error: "Número da NF é obrigatório" }, { status: 400 });
+    }
+    const { error } = await supabase
+      .from("documentos")
+      .update({ numero_nf: numeroNf.trim(), numero_nf_status: "manual" })
+      .eq("id", documentoId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  }
+
   if (acao !== "aprovar" && acao !== "reprovar") {
-    return NextResponse.json({ error: "acao deve ser 'aprovar' ou 'reprovar'" }, { status: 400 });
+    return NextResponse.json({ error: "acao deve ser 'aprovar', 'reprovar' ou 'numero_nf'" }, { status: 400 });
   }
   if (acao === "reprovar" && !motivo?.trim()) {
     return NextResponse.json({ error: "Motivo é obrigatório para reprovar" }, { status: 400 });

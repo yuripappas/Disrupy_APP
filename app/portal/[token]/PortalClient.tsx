@@ -7,6 +7,40 @@ import {
   Film, Image, Archive,
 } from "lucide-react";
 
+// ── PDF text extraction (pdfjs-dist) ──────────────────────────────────────────
+
+async function extrairTextoNf(file: File): Promise<{ numeroNf: string | null; status: 'extraido' | 'falhou' }> {
+  if (file.type !== 'application/pdf') return { numeroNf: null, status: 'falhou' };
+  try {
+    const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
+    if (!GlobalWorkerOptions.workerSrc) {
+      GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+    }
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await getDocument({ data: arrayBuffer }).promise;
+    let texto = '';
+    for (let i = 1; i <= Math.min(pdf.numPages, 5); i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      texto += content.items.map((it) => ('str' in it ? it.str : '')).join(' ') + '\n';
+    }
+    const padraos = [
+      /nota\s+fiscal\s+(?:eletr[oô]nica\s+)?(?:de\s+servi[cç]os?\s+)?n[°ºo]?\.?\s*:?\s*(\d{3,10})/gi,
+      /nfs?-?e?\s*n[°ºo]?\.?\s*:?\s*(\d{3,10})/gi,
+      /\bNF[\s\-.:/#]*(\d{3,10})\b/g,
+      /n[°ºo]\.?\s+(\d{3,10})/gi,
+    ];
+    for (const p of padraos) {
+      p.lastIndex = 0;
+      const m = p.exec(texto);
+      if (m) return { numeroNf: m[1], status: 'extraido' };
+    }
+    return { numeroNf: null, status: 'falhou' };
+  } catch {
+    return { numeroNf: null, status: 'falhou' };
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const clienteTipoLabel: Record<string, string> = {
@@ -253,7 +287,16 @@ function DocRow({
           throw new Error(driveData.error ?? "Apps Script não retornou URL do arquivo");
         }
 
-        // ── 3. Persiste referência no banco (server-side, via portal token) ───
+        // ── 3. Extrai nº NF do PDF (apenas para tipo 'nf') ────────────────────
+        let numeroNf: string | null = null;
+        let nfStatus: 'extraido' | 'falhou' | 'pendente' = 'pendente';
+        if (doc.tipo === 'nf') {
+          const resultado = await extrairTextoNf(sf.file);
+          numeroNf = resultado.numeroNf;
+          nfStatus = resultado.status;
+        }
+
+        // ── 4. Persiste referência no banco (server-side, via portal token) ───
         const saveRes = await fetch("/api/drive/salvar-arquivo", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
@@ -263,6 +306,7 @@ function DocRow({
             fileName:    nomeArquivo,
             fileSize:    sf.file.size,
             token,        // token do portal para autenticação server-side
+            ...(doc.tipo === 'nf' && { numeroNf, nfStatus }),
           }),
         });
 
