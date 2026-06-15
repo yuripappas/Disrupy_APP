@@ -28,16 +28,17 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://disrupy-app.vercel.a
 
 export async function POST(req: NextRequest) {
   const body = await req.json() as {
-    documentoId: string;
-    viewUrl:     string;
-    fileName:    string;
-    fileSize?:   number;
-    token?:      string;
-    numeroNf?:   string | null;
-    nfStatus?:   'extraido' | 'falhou' | 'pendente';
+    documentoId:  string;
+    viewUrl:      string;
+    fileName:     string;
+    fileSize?:    number;
+    token?:       string;
+    numeroNf?:    string | null;
+    nfStatus?:    'extraido' | 'falhou' | 'pendente';
+    valorLiquido?: string | null;
   };
 
-  const { documentoId, viewUrl, fileName, fileSize, token, numeroNf, nfStatus } = body;
+  const { documentoId, viewUrl, fileName, fileSize, token, numeroNf, nfStatus, valorLiquido } = body;
 
   if (!documentoId || !viewUrl || !fileName) {
     return NextResponse.json({ error: 'Campos obrigatórios faltando' }, { status: 400 });
@@ -103,7 +104,8 @@ export async function POST(req: NextRequest) {
     const docUpdate: Record<string, unknown> = { status: 'enviado', arquivo_url: viewUrl };
     if (nfStatus) {
       docUpdate.numero_nf_status = nfStatus;
-      if (numeroNf) docUpdate.numero_nf = numeroNf;
+      if (numeroNf)     docUpdate.numero_nf    = numeroNf;
+      if (valorLiquido) docUpdate.valor_nf      = valorLiquido;
     }
     await admin.from('documentos').update(docUpdate).eq('id', documentoId);
 
@@ -148,7 +150,8 @@ export async function POST(req: NextRequest) {
   const docUpdateAuth: Record<string, unknown> = { status: 'enviado', arquivo_url: viewUrl };
   if (nfStatus) {
     docUpdateAuth.numero_nf_status = nfStatus;
-    if (numeroNf) docUpdateAuth.numero_nf = numeroNf;
+    if (numeroNf)     docUpdateAuth.numero_nf = numeroNf;
+    if (valorLiquido) docUpdateAuth.valor_nf   = valorLiquido;
   }
   await supabase.from('documentos').update(docUpdateAuth).eq('id', documentoId);
 

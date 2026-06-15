@@ -38,6 +38,7 @@ type Documento = {
   reprovacao_motivo: string | null;
   numero_nf: string | null;
   numero_nf_status: string | null;
+  valor_nf: string | null;
   documento_arquivos: Arquivo[];
 };
 
@@ -241,7 +242,10 @@ function DocRow({
         <div className="mx-5 mb-3 px-3 py-1.5 rounded-lg flex items-center justify-between gap-2"
           style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
           <p className="text-xs" style={{ color: "#15803D" }}>
-            <span className="font-semibold">NF {doc.numero_nf}</span>
+            <span className="font-semibold">NFS-e {doc.numero_nf}</span>
+            {doc.valor_nf && (
+              <span> · R$ {doc.valor_nf}</span>
+            )}
             {doc.numero_nf_status === "manual" ? " · inserido manualmente" : " · extraído do PDF"}
           </p>
           {isRevisor && (

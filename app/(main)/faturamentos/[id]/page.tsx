@@ -46,7 +46,7 @@ export default async function FaturamentoDetailPage({
         nome_iclips, associado, tipo_iclips,
         fornecedor:fornecedores ( id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp, contato_email ),
         documentos ( id, tipo, label, status, arquivo_url, reprovacao_motivo,
-          numero_nf, numero_nf_status,
+          numero_nf, numero_nf_status, valor_nf,
           documento_arquivos ( id, arquivo_url, nome_arquivo, tamanho_bytes, created_at ) ),
         disparos ( id, status, created_at, enviado_em, agendado_para )
       )

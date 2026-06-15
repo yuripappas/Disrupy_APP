@@ -9,8 +9,12 @@ import {
 
 // ── PDF text extraction (pdfjs-dist) ──────────────────────────────────────────
 
-async function extrairTextoNf(file: File): Promise<{ numeroNf: string | null; status: 'extraido' | 'falhou' }> {
-  if (file.type !== 'application/pdf') return { numeroNf: null, status: 'falhou' };
+async function extrairTextoNf(file: File): Promise<{
+  numeroNf:     string | null;
+  valorLiquido: string | null;
+  status:       'extraido' | 'falhou';
+}> {
+  if (file.type !== 'application/pdf') return { numeroNf: null, valorLiquido: null, status: 'falhou' };
   try {
     const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
     if (!GlobalWorkerOptions.workerSrc) {
@@ -24,20 +28,35 @@ async function extrairTextoNf(file: File): Promise<{ numeroNf: string | null; st
       const content = await page.getTextContent();
       texto += content.items.map((it) => ('str' in it ? it.str : '')).join(' ') + '\n';
     }
-    const padraos = [
+
+    // Padrões para número da NFS-e — testados em ordem de especificidade
+    const padroesNf = [
+      // "251 NFS-e" — número aparece antes do label (padrão GISS/Maceió)
+      /(\d{1,6})\s+NFS-e\b/i,
+      // "NFS-e Substituída 251"
+      /NFS-e\s+Substitu[íi]da\s+(\d{1,10})/i,
+      // "NFS-e n° 251" / "NF n° 251"
       /nota\s+fiscal\s+(?:eletr[oô]nica\s+)?(?:de\s+servi[cç]os?\s+)?n[°ºo]?\.?\s*:?\s*(\d{3,10})/gi,
       /nfs?-?e?\s*n[°ºo]?\.?\s*:?\s*(\d{3,10})/gi,
       /\bNF[\s\-.:/#]*(\d{3,10})\b/g,
       /n[°ºo]\.?\s+(\d{3,10})/gi,
     ];
-    for (const p of padraos) {
+
+    let numeroNf: string | null = null;
+    for (const p of padroesNf) {
       p.lastIndex = 0;
       const m = p.exec(texto);
-      if (m) return { numeroNf: m[1], status: 'extraido' };
+      if (m) { numeroNf = m[1]; break; }
     }
-    return { numeroNf: null, status: 'falhou' };
+
+    // Extrai Valor Líquido (formato BR: "67.926,00")
+    let valorLiquido: string | null = null;
+    const mValor = /valor\s+l[íi]quido\s+([0-9]+(?:\.[0-9]{3})*,[0-9]{2})/i.exec(texto);
+    if (mValor) valorLiquido = mValor[1];
+
+    return { numeroNf, valorLiquido, status: numeroNf ? 'extraido' : 'falhou' };
   } catch {
-    return { numeroNf: null, status: 'falhou' };
+    return { numeroNf: null, valorLiquido: null, status: 'falhou' };
   }
 }
 
@@ -287,13 +306,15 @@ function DocRow({
           throw new Error(driveData.error ?? "Apps Script não retornou URL do arquivo");
         }
 
-        // ── 3. Extrai nº NF do PDF (apenas para tipo 'nf') ────────────────────
-        let numeroNf: string | null = null;
+        // ── 3. Extrai nº NF e valor líquido do PDF (apenas para tipo 'nf') ──────
+        let numeroNf:     string | null = null;
+        let valorLiquido: string | null = null;
         let nfStatus: 'extraido' | 'falhou' | 'pendente' = 'pendente';
         if (doc.tipo === 'nf') {
           const resultado = await extrairTextoNf(sf.file);
-          numeroNf = resultado.numeroNf;
-          nfStatus = resultado.status;
+          numeroNf     = resultado.numeroNf;
+          valorLiquido = resultado.valorLiquido;
+          nfStatus     = resultado.status;
         }
 
         // ── 4. Persiste referência no banco (server-side, via portal token) ───
@@ -306,7 +327,7 @@ function DocRow({
             fileName:    nomeArquivo,
             fileSize:    sf.file.size,
             token,        // token do portal para autenticação server-side
-            ...(doc.tipo === 'nf' && { numeroNf, nfStatus }),
+            ...(doc.tipo === 'nf' && { numeroNf, nfStatus, valorLiquido }),
           }),
         });
 
