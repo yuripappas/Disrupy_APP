@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Upload, FileSpreadsheet, AlertTriangle, CheckCircle2,
@@ -247,8 +247,8 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
   // ── File processing ────────────────────────────────────────────────────────
 
   async function processFile(file: File) {
-    if (!file.name.endsWith(".xlsx")) {
-      setParseError("Selecione um arquivo .xlsx exportado do iClips.");
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setParseError(`Selecione um arquivo .xlsx exportado do iClips. Arquivo recebido: "${file.name}"`);
       return;
     }
     setParseError("");
@@ -281,16 +281,19 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
       setFornecedoresMatch([...orcMatched, ...midMatched]);
       setStep(1);
     } catch (e) {
-      setParseError(e instanceof Error ? e.message : "Erro ao ler o arquivo.");
+      const msg = e instanceof Error ? e.message : "Erro ao ler o arquivo.";
+      console.error("[ImportarIClips] Erro ao processar arquivo:", e);
+      setParseError(msg);
     }
   }
 
-  const onDrop = useCallback((e: React.DragEvent) => {
+  function onDrop(e: React.DragEvent) {
     e.preventDefault();
+    e.stopPropagation();
     setDragging(false);
     const file = e.dataTransfer.files[0];
     if (file) processFile(file);
-  }, []);
+  }
 
   // ── Honorários editing ─────────────────────────────────────────────────────
 
@@ -471,27 +474,31 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
           {step === 0 && (
             <div className="p-6">
               <div
-                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-                onDragLeave={() => setDragging(false)}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragging(true); }}
+                onDragLeave={(e) => { e.stopPropagation(); setDragging(false); }}
                 onDrop={onDrop}
                 onClick={() => inputRef.current?.click()}
-                className="border-2 border-dashed rounded-xl flex flex-col items-center justify-center py-16 cursor-pointer transition-colors"
-                style={{ borderColor: dragging ? "#2E60FF" : "#CBD5E1", backgroundColor: dragging ? "#EEF2FF" : "#F8FAFC" }}
+                className="border-2 border-dashed rounded-xl flex flex-col items-center justify-center py-12 cursor-pointer transition-colors"
+                style={{ borderColor: dragging ? "#2E60FF" : parseError ? "#EF4444" : "#CBD5E1", backgroundColor: dragging ? "#EEF2FF" : parseError ? "#FEF2F2" : "#F8FAFC" }}
               >
-                <FileSpreadsheet className="w-12 h-12 mb-3" style={{ color: dragging ? "#2E60FF" : "#94A3B8" }} />
-                <p className="text-sm font-semibold mb-1" style={{ color: "#334155" }}>
-                  Arraste o arquivo ou clique para selecionar
-                </p>
-                <p className="text-xs" style={{ color: "#94A3B8" }}>Arquivo .xlsx exportado do iClips (Proposta)</p>
-                <input ref={inputRef} type="file" accept=".xlsx" className="hidden"
+                {parseError ? (
+                  <>
+                    <AlertTriangle className="w-10 h-10 mb-3" style={{ color: "#EF4444" }} />
+                    <p className="text-sm font-semibold mb-1 text-center px-6" style={{ color: "#991B1B" }}>{parseError}</p>
+                    <p className="text-xs mt-2" style={{ color: "#EF4444" }}>Clique para tentar outro arquivo</p>
+                  </>
+                ) : (
+                  <>
+                    <FileSpreadsheet className="w-12 h-12 mb-3" style={{ color: dragging ? "#2E60FF" : "#94A3B8" }} />
+                    <p className="text-sm font-semibold mb-1" style={{ color: "#334155" }}>
+                      Arraste o arquivo ou clique para selecionar
+                    </p>
+                    <p className="text-xs" style={{ color: "#94A3B8" }}>Arquivo .xlsx exportado do iClips (Proposta)</p>
+                  </>
+                )}
+                <input ref={inputRef} type="file" accept=".xlsx,.XLSX" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); }} />
               </div>
-              {parseError && (
-                <div className="mt-4 flex items-start gap-2 p-3 rounded-lg" style={{ backgroundColor: "#FEF2F2" }}>
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: "#EF4444" }} />
-                  <p className="text-sm" style={{ color: "#991B1B" }}>{parseError}</p>
-                </div>
-              )}
             </div>
           )}
 
