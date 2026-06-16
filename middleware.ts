@@ -33,7 +33,8 @@ export async function middleware(request: NextRequest) {
 
   // Rotas públicas (sem login)
   // /api/cron/ é protegido pelo CRON_SECRET internamente, não precisa de sessão
-  const publicRoutes = ["/login", "/portal", "/api/cron/"];
+  // /api/drive/salvar-arquivo é usada pelo portal do fornecedor (sem sessão) — protegida pelo link_token no body
+  const publicRoutes = ["/login", "/portal", "/api/cron/", "/api/drive/salvar-arquivo"];
   const isPublic =
     publicRoutes.some((r) => pathname.startsWith(r)) ||
     pathname === "/";
