@@ -488,6 +488,7 @@ function DocRow({
         <div className="mt-3 space-y-2">
           <input
             ref={inputRef}
+            id={`file-input-${doc.id}`}
             type="file"
             multiple
             className="hidden"
@@ -497,8 +498,9 @@ function DocRow({
             }}
           />
 
-          {/* Drop zone */}
-          <div
+          {/* Drop zone — label nativo para garantir funcionamento em iOS/Android */}
+          <label
+            htmlFor={`file-input-${doc.id}`}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={(e) => {
@@ -506,24 +508,25 @@ function DocRow({
               setDragging(false);
               if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
             }}
-            onClick={() => !uploading && inputRef.current?.click()}
+            onClick={(e) => { if (uploading) e.preventDefault(); }}
             className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-lg border-2 border-dashed transition-colors"
             style={{
               borderColor:     dragging ? "#2E60FF" : "#CBD5E1",
               backgroundColor: dragging ? "#EEF2FF" : "#F8FAFC",
               cursor:          uploading ? "not-allowed" : "pointer",
+              display:         "flex",
             }}
           >
             <Upload className="w-5 h-5" style={{ color: dragging ? "#2E60FF" : "#94A3B8" }} />
             <p className="text-xs font-medium" style={{ color: dragging ? "#2E60FF" : "#64748B" }}>
               {existingFiles.length > 0
                 ? "Adicionar mais arquivos"
-                : "Arraste os arquivos ou clique para selecionar"}
+                : "Toque aqui ou arraste os arquivos"}
             </p>
             <p className="text-xs" style={{ color: "#CBD5E1" }}>
-              Qualquer formato — PDF, vídeo, imagem, ZIP e outros
+              PDF, foto, vídeo, ZIP e outros formatos
             </p>
-          </div>
+          </label>
 
           {/* Fila de staging */}
           {staged.length > 0 && (
