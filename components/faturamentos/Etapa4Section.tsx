@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Copy, CheckCircle, AlertTriangle, Upload, FileText,
   Loader2, X, ExternalLink, Trash2, Plus,
@@ -325,6 +325,21 @@ export function Etapa4Section({
     const n = certidoesIniciais.filter((c) => c.tipo.startsWith("empenho_")).length;
     return Math.max(1, n);
   });
+
+  // Relê do banco ao montar — garante que uploads feitos antes de trocar de etapa
+  // continuem visíveis ao voltar para esta seção.
+  useEffect(() => {
+    fetch(`/api/certidoes?faturamentoId=${faturamentoId}`)
+      .then((r) => r.json())
+      .then((data: { certidoes?: Certidao[] }) => {
+        if (data.certidoes && data.certidoes.length > 0) {
+          setCertidoes(data.certidoes);
+          const n = data.certidoes.filter((c) => c.tipo.startsWith("empenho_")).length;
+          if (n > 0) setEmpenhoCount((prev) => Math.max(prev, n));
+        }
+      })
+      .catch(() => {}); // silently fail — usa props como fallback
+  }, [faturamentoId]);
 
   const handleCertidaoSalva = useCallback((c: Certidao) => {
     setCertidoes((prev) => {
