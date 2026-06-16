@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdmin } from "@supabase/supabase-js";
 
 // PATCH /api/faturamento-fornecedores
 // Associa um fornecedor pendente a um cadastro existente
@@ -58,6 +59,54 @@ export async function PATCH(req: NextRequest) {
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
   }
+
+  return NextResponse.json({ ok: true });
+}
+
+// DELETE /api/faturamento-fornecedores?id=ffId
+// Remove um fornecedor de um faturamento (apenas gestores e faturamento)
+export async function DELETE(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  const role = user.app_metadata?.role;
+  if (role !== "gestor" && role !== "faturamento") {
+    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  }
+
+  const id = req.nextUrl.searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+
+  const admin = createAdmin(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+
+  // Verifica que o registro existe antes de excluir
+  const { data: ff } = await admin
+    .from("faturamento_fornecedores")
+    .select("id, envio_inicial_em")
+    .eq("id", id)
+    .single();
+
+  if (!ff) return NextResponse.json({ error: "Registro não encontrado" }, { status: 404 });
+
+  // Não permite excluir se o link já foi enviado (faturamento em andamento)
+  if (ff.envio_inicial_em) {
+    return NextResponse.json(
+      { error: "Não é possível excluir um fornecedor após o envio do link. Contate um gestor." },
+      { status: 409 },
+    );
+  }
+
+  const { error: delErr } = await admin
+    .from("faturamento_fornecedores")
+    .delete()
+    .eq("id", id);
+
+  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
 }

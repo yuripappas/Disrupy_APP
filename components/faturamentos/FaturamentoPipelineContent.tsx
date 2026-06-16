@@ -217,7 +217,7 @@ export function FaturamentoPipelineContent({
                 </p>
               </div>
             ) : (
-              <MonitoramentoClient ffs={ffRows} />
+              <MonitoramentoClient ffs={ffRows} onRemover={isRevisor ? () => undefined : undefined} />
             )}
           </div>
         );

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import {
   Send, Clock, CheckCircle, XCircle, Calendar, Search,
   Loader2, MessageSquare, Phone, Mail, Filter, ExternalLink, GitBranch,
-  Users,
+  Users, Trash2,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { CadenciaModal } from "./CadenciaModal";
@@ -218,17 +218,30 @@ function Row({
   row,
   onAtualizar,
   onCadencia,
+  onRemover,
 }: {
   row: ComputedRow;
   onAtualizar: (ffId: string, disparo: DisparoRecord) => void;
   onCadencia: (ff: FFRow) => void;
+  onRemover?: (ffId: string) => void;
 }) {
-  const [enviando, setEnviando]   = useState(false);
-  const [agendando, setAgendando] = useState(false);
-  const [mostrarAg, setMostrarAg] = useState(false);
-  const [dataAg, setDataAg]       = useState("");
-  const [erro, setErro]           = useState<string | null>(null);
-  const [enviado, setEnviado]     = useState(false);
+  const [enviando, setEnviando]       = useState(false);
+  const [agendando, setAgendando]     = useState(false);
+  const [mostrarAg, setMostrarAg]     = useState(false);
+  const [dataAg, setDataAg]           = useState("");
+  const [erro, setErro]               = useState<string | null>(null);
+  const [enviado, setEnviado]         = useState(false);
+  const [confirmDel, setConfirmDel]   = useState(false);
+  const [excluindo, setExcluindo]     = useState(false);
+
+  async function excluir() {
+    setExcluindo(true);
+    const res = await fetch(`/api/faturamento-fornecedores?id=${row.id}`, { method: "DELETE" });
+    const data = await res.json();
+    setExcluindo(false);
+    if (!res.ok) { setErro(data.error ?? "Erro ao excluir"); setConfirmDel(false); return; }
+    onRemover?.(row.id);
+  }
 
   const portalUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${row.link_token}`;
   const docsFilled = (row.documentos ?? []).filter((d) => d.status !== "pendente").length;
@@ -405,7 +418,39 @@ function Row({
             >
               <ExternalLink className="w-3 h-3" />
             </a>
+
+            {/* Excluir (só aparece quando onRemover é passado) */}
+            {onRemover && !confirmDel && (
+              <button
+                onClick={() => setConfirmDel(true)}
+                className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-red-50"
+                style={{ color: "#CBD5E1" }}
+                title="Excluir fornecedor do faturamento"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
+
+          {/* Confirmação de exclusão inline */}
+          {confirmDel && (
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <span className="text-xs" style={{ color: "#DC2626" }}>Remover fornecedor?</span>
+              <button
+                onClick={excluir}
+                disabled={excluindo}
+                className="flex items-center gap-1 text-xs px-2 py-0.5 rounded font-medium text-white"
+                style={{ backgroundColor: excluindo ? "#94A3B8" : "#DC2626" }}
+              >
+                {excluindo ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                {excluindo ? "..." : "Confirmar"}
+              </button>
+              <button onClick={() => setConfirmDel(false)} className="text-xs" style={{ color: "#94A3B8" }}>
+                Cancelar
+              </button>
+            </div>
+          )}
+
           {erro && <p className="text-xs mt-1" style={{ color: "#DC2626" }}>⚠ {erro}</p>}
         </td>
       </tr>
@@ -575,7 +620,13 @@ function EnviarParaTodosButton({
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
+export function MonitoramentoClient({
+  ffs: initialFfs,
+  onRemover,
+}: {
+  ffs: FFRow[];
+  onRemover?: (ffId: string) => void;
+}) {
   const [ffs, setFfs]               = useState<FFRow[]>(initialFfs);
   const [filtroFat, setFiltroFat]   = useState("todos");
   const [filtroStatus, setFiltroStatus] = useState("todos");
@@ -588,6 +639,11 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
         ff.id !== ffId ? ff : { ...ff, disparos: [disparo, ...(ff.disparos ?? [])] },
       ),
     );
+  }
+
+  function handleRemover(ffId: string) {
+    setFfs((prev) => prev.filter((ff) => ff.id !== ffId));
+    onRemover?.(ffId);
   }
 
   const rows = useMemo(() => ffs.map(computeRow), [ffs]);
@@ -746,7 +802,7 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
                     <GroupHeader key={`header-${tipo}`} label={tipoLabel(tipo)} count={grupoRows.length} />
                   )}
                   {grupoRows.map((row) => (
-                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFf} />
+                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFf} onRemover={onRemover ? handleRemover : undefined} />
                   ))}
                 </>
               ))}
