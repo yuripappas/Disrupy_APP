@@ -274,17 +274,19 @@ function CertidaoSlot({
         )}
         {!certidao && (
           <>
-            <input ref={inputRef} type="file" accept=".pdf" className="hidden"
+            <input ref={inputRef} id={`cert-input-${tipo}`} type="file"
+              accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"
+              className="hidden"
               onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); e.target.value = ""; }} />
-            <button
-              onClick={() => !uploading && inputRef.current?.click()}
-              disabled={uploading}
+            <label
+              htmlFor={`cert-input-${tipo}`}
+              onClick={(e) => { if (uploading) e.preventDefault(); }}
               className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
-              style={{ backgroundColor: "#EEF2FF", color: "#2E60FF", opacity: uploading ? 0.6 : 1 }}
+              style={{ backgroundColor: "#EEF2FF", color: "#2E60FF", opacity: uploading ? 0.6 : 1, cursor: uploading ? "not-allowed" : "pointer" }}
             >
               {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
               {uploading ? "Enviando…" : "Upload"}
-            </button>
+            </label>
           </>
         )}
       </div>
