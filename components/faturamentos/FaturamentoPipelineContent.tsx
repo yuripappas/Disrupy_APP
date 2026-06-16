@@ -166,6 +166,7 @@ export function FaturamentoPipelineContent({
         valor_total: ff.valor_total,
         valor: ff.valor ?? 0,
         tipo: ff.fornecedor?.tipo ?? ff.tipo_iclips ?? null,
+        envio_inicial_em: ff.envio_inicial_em ?? null,
         faturamento: { id: faturamentoId, nome_campanha: nomeCampanha, iclips_job_id: jobId },
         fornecedor: {
           id: ff.fornecedor.id,

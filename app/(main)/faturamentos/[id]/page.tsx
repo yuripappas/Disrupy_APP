@@ -36,12 +36,12 @@ export default async function FaturamentoDetailPage({
       faturamento_custos_internos ( id, codigo, servico, qtde, valor_unitario, valor_total ),
       faturamento_fornecedores (
         id, valor, honorarios, valor_total, prazo_dias, status, link_token,
-        nome_iclips, associado, tipo_iclips,
+        nome_iclips, associado, tipo_iclips, envio_inicial_em,
         fornecedor:fornecedores ( id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp, contato_email ),
         documentos ( id, tipo, label, status, arquivo_url, reprovacao_motivo,
           numero_nf, numero_nf_status, valor_nf,
           documento_arquivos ( id, arquivo_url, nome_arquivo, tamanho_bytes, created_at ) ),
-        disparos ( id, status, created_at, enviado_em, agendado_para )
+        disparos ( id, tipo, subtipo, status, created_at, enviado_em, agendado_para )
       )
     `)
     .eq("id", id)

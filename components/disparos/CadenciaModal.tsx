@@ -112,15 +112,19 @@ function ChannelPill({
   );
 }
 
-// ── EditDateForm ──────────────────────────────────────────────────────────────
+// ── AgendarForm ───────────────────────────────────────────────────────────────
 
-function EditDateForm({
-  disparoId,
+function AgendarForm({
+  ffId,
+  step,
+  disparoId,        // se já existe um disparo agendado (reagendar via PATCH)
   currentDate,
   onSalvo,
   onCancelar,
 }: {
-  disparoId: string;
+  ffId: string;
+  step: string;
+  disparoId?: string;
   currentDate: string | null;
   onSalvo: (novaData: string) => void;
   onCancelar: () => void;
@@ -134,13 +138,27 @@ function EditDateForm({
     setSalvando(true);
     setErro(null);
     try {
-      const res = await fetch("/api/disparos", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: disparoId, agendado_para: new Date(novaData).toISOString() }),
-      });
-      if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? "Erro"); }
-      onSalvo(new Date(novaData).toISOString());
+      const iso = new Date(novaData).toISOString();
+
+      if (disparoId) {
+        // Reagendar disparo existente via PATCH
+        const res = await fetch("/api/disparos", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: disparoId, agendado_para: iso }),
+        });
+        if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? "Erro"); }
+      } else {
+        // Agendar novo step via POST agendar-step
+        const res = await fetch("/api/disparos/agendar-step", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ffId, step, agendadoPara: iso }),
+        });
+        if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? "Erro"); }
+      }
+
+      onSalvo(iso);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar");
     } finally {
@@ -176,12 +194,14 @@ function EditDateForm({
 // ── StepRow ───────────────────────────────────────────────────────────────────
 
 function StepRow({
+  ffId,
   stepDef,
   disparos,
   inicialDate,
   jaRespondeu,
   showLine,
 }: {
+  ffId: string;
   stepDef: StepDef;
   disparos: DisparoEnriquecido[];
   inicialDate: Date | null;
@@ -257,11 +277,26 @@ function StepRow({
       setLocalDisparos((prev) =>
         prev.map((d) => d.id === agendadoDsp.id ? { ...d, agendado_para: novaData } : d)
       );
+    } else {
+      // Step novo agendado — adiciona disparo sintético para mostrar na UI
+      setLocalDisparos((prev) => [...prev, {
+        id: "new-" + Date.now(),
+        status: "agendado",
+        tipo: "whatsapp",
+        subtipo: stepDef.step,
+        created_at: novaData,
+        enviado_em: null,
+        agendado_para: novaData,
+      }]);
     }
     setEditando(false);
   }
 
-  const canEdit = stepStatus === "scheduled" && agendadoDsp;
+  // Pode editar: step agendado (reagendar) OU step pendente não-evento e link_inicial já enviado
+  const canEdit = !wasSent && !stepDef.isEvento && (
+    stepStatus === "scheduled" ||
+    (stepStatus === "pending" && stepDef.step !== "link_inicial")
+  );
 
   return (
     <div className="flex items-start gap-3">
@@ -299,17 +334,19 @@ function StepRow({
               onClick={() => setEditando(true)}
               className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded hover:bg-slate-100"
               style={{ color: "#7C3AED" }}
-              title="Ajustar data"
             >
-              <Edit2 className="w-2.5 h-2.5" /> Ajustar
+              <Edit2 className="w-2.5 h-2.5" />
+              {stepStatus === "scheduled" ? "Ajustar" : "Agendar"}
             </button>
           )}
         </div>
 
-        {/* Edit form */}
-        {editando && agendadoDsp && (
-          <EditDateForm
-            disparoId={agendadoDsp.id}
+        {/* Agendar/Ajustar form */}
+        {editando && (
+          <AgendarForm
+            ffId={ffId}
+            step={stepDef.step}
+            disparoId={agendadoDsp?.id}
             currentDate={dataValue}
             onSalvo={handleSalvoData}
             onCancelar={() => setEditando(false)}
@@ -443,6 +480,7 @@ export function CadenciaModal({
             {CADENCIA.map((stepDef, i) => (
               <StepRow
                 key={stepDef.step}
+                ffId={ff.id}
                 stepDef={stepDef}
                 disparos={disparos}
                 inicialDate={inicialDate}
@@ -466,6 +504,7 @@ export function CadenciaModal({
             {EVENTOS.map((stepDef, i) => (
               <StepRow
                 key={stepDef.step}
+                ffId={ff.id}
                 stepDef={stepDef}
                 disparos={disparos}
                 inicialDate={inicialDate}
