@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Send, Clock, CheckCircle, XCircle, Calendar, Search,
   Loader2, MessageSquare, Phone, Mail, Filter, ExternalLink, GitBranch,
@@ -222,7 +223,7 @@ function Row({
 }: {
   row: ComputedRow;
   onAtualizar: (ffId: string, disparo: DisparoRecord) => void;
-  onCadencia: (ff: FFRow) => void;
+  onCadencia: (ffId: string) => void;
   onRemover?: (ffId: string) => void;
 }) {
   const [enviando, setEnviando]       = useState(false);
@@ -400,7 +401,7 @@ function Row({
 
             {/* Cadência */}
             <button
-              onClick={() => onCadencia(row)}
+              onClick={() => onCadencia(row.id)}
               className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors"
               style={{ backgroundColor: "#F5F3FF", color: "#7C3AED" }}
               title="Ver cadência de mensagens"
@@ -627,11 +628,33 @@ export function MonitoramentoClient({
   ffs: FFRow[];
   onRemover?: (ffId: string) => void;
 }) {
+  const router                      = useRouter();
+  const refreshTimer                = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ffs, setFfs]               = useState<FFRow[]>(initialFfs);
   const [filtroFat, setFiltroFat]   = useState("todos");
   const [filtroStatus, setFiltroStatus] = useState("todos");
   const [busca, setBusca]           = useState("");
-  const [cadenciaFf, setCadenciaFf] = useState<FFRow | null>(null);
+  const [cadenciaFfId, setCadenciaFfId] = useState<string | null>(null);
+
+  // Derived: sempre usa o ff atualizado de `ffs` — nunca um snapshot estático
+  const cadenciaFf = useMemo(
+    () => (cadenciaFfId ? (ffs.find((ff) => ff.id === cadenciaFfId) ?? null) : null),
+    [cadenciaFfId, ffs],
+  );
+
+  // Quando o servidor refaz o render (router.refresh), mescla os dados reais do banco
+  // com eventuais disparos otimistas que ainda não chegaram no banco.
+  useEffect(() => {
+    setFfs((prev) =>
+      initialFfs.map((newFf) => {
+        const oldFf = prev.find((f) => f.id === newFf.id);
+        if (!oldFf) return newFf;
+        const dbIds    = new Set(newFf.disparos.map((d) => d.id));
+        const synthetic = (oldFf.disparos ?? []).filter((d) => !dbIds.has(d.id));
+        return { ...newFf, disparos: [...synthetic, ...newFf.disparos] };
+      }),
+    );
+  }, [initialFfs]);
 
   function handleAtualizar(ffId: string, disparo: DisparoRecord) {
     setFfs((prev) =>
@@ -639,6 +662,9 @@ export function MonitoramentoClient({
         ff.id !== ffId ? ff : { ...ff, disparos: [disparo, ...(ff.disparos ?? [])] },
       ),
     );
+    // Debounce: dispara uma única atualização do servidor após todos os envios
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => router.refresh(), 800);
   }
 
   function handleRemover(ffId: string) {
@@ -712,7 +738,7 @@ export function MonitoramentoClient({
   return (
     <div>
       {cadenciaFf && (
-        <CadenciaModal ff={cadenciaFf} onClose={() => setCadenciaFf(null)} />
+        <CadenciaModal ff={cadenciaFf} onClose={() => setCadenciaFfId(null)} />
       )}
 
       {/* KPIs */}
@@ -802,7 +828,7 @@ export function MonitoramentoClient({
                     <GroupHeader key={`header-${tipo}`} label={tipoLabel(tipo)} count={grupoRows.length} />
                   )}
                   {grupoRows.map((row) => (
-                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFf} onRemover={onRemover ? handleRemover : undefined} />
+                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} />
                   ))}
                 </>
               ))}
