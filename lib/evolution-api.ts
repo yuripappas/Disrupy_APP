@@ -94,7 +94,11 @@ export async function deletarInstancia(instanceName: string) {
 }
 
 // ── Enviar mensagem de texto ───────────────────────────────────────────────────
-export async function enviarMensagem(instanceName: string, numero: string, texto: string) {
+export async function enviarMensagem(
+  instanceName: string,
+  numero: string,
+  texto: string,
+): Promise<{ key: { id: string; remoteJid: string } }> {
   // Normaliza: remove tudo que não é dígito, adiciona 55 se não tiver DDI
   const num = numero.replace(/\D/g, '');
   const destino = num.startsWith('55') ? num : `55${num}`;
@@ -107,7 +111,19 @@ export async function enviarMensagem(instanceName: string, numero: string, texto
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Erro ao enviar mensagem: ${err}`);
+    throw new Error(`Erro ao enviar: ${err}`);
   }
-  return res.json();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json();
+
+  // A Evolution API retorna key.id quando o WhatsApp de fato recebeu a mensagem.
+  // Se vier vazio/nulo, a sessão está morta (conectada mas inoperante).
+  if (!data?.key?.id) {
+    throw new Error(
+      'WhatsApp não confirmou o envio (sessão inoperante). Reconecte em Configurações → WhatsApp.',
+    );
+  }
+
+  return data as { key: { id: string; remoteJid: string } };
 }
