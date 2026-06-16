@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   Send, Clock, CheckCircle, XCircle, Calendar, Search,
-  Loader2, MessageSquare, Phone, Filter, ExternalLink, GitBranch,
+  Loader2, MessageSquare, Phone, Mail, Filter, ExternalLink, GitBranch,
   Users,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
@@ -34,15 +34,25 @@ export type FFRow = {
   tipo?: string | null;
   envio_inicial_em?: string | null;
   faturamento: { id: string; nome_campanha: string; iclips_job_id: string | null };
-  fornecedor:  { id: string; razao_social: string; cnpj: string; contato_nome: string | null; contato_whatsapp: string };
+  fornecedor:  {
+    id: string; razao_social: string; cnpj: string;
+    contato_nome: string | null; contato_whatsapp: string;
+    contato_email?: string | null; telefone?: string | null;
+  };
   documentos:  DocumentoRecord[];
   disparos:    DisparoRecord[];
 };
 
 type DocStatus   = "sem_docs" | "pendente" | "parcial" | "respondeu";
 type DispStatus  = "nao_enviado" | "agendado" | "enviado" | "falhou";
+type RowStatus   = "nao_enviado" | "parcial" | "concluido" | "reprovado";
 
-type ComputedRow = FFRow & { docStatus: DocStatus; dispStatus: DispStatus; ultimoDisparo: DisparoRecord | null };
+type ComputedRow = FFRow & {
+  docStatus:    DocStatus;
+  dispStatus:   DispStatus;
+  rowStatus:    RowStatus;
+  ultimoDisparo: DisparoRecord | null;
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -67,7 +77,14 @@ function computeRow(ff: FFRow): ComputedRow {
     else if (ultimoDisparo.status === "falhou")  dispStatus = "falhou";
   }
 
-  return { ...ff, docStatus, dispStatus, ultimoDisparo };
+  const hasReprovado = docs.some((d) => d.status === "reprovado");
+  let rowStatus: RowStatus;
+  if (hasReprovado)                        rowStatus = "reprovado";
+  else if (docStatus === "respondeu")      rowStatus = "concluido";
+  else if (docStatus === "parcial")        rowStatus = "parcial";
+  else                                     rowStatus = "nao_enviado";
+
+  return { ...ff, docStatus, dispStatus, rowStatus, ultimoDisparo };
 }
 
 function formatDt(iso: string | null) {
@@ -125,21 +142,73 @@ function DocBadge({ status, total, filled }: { status: DocStatus; total: number;
   );
 }
 
-// ── DispBadge ─────────────────────────────────────────────────────────────────
+// ── RowStatusBadge ────────────────────────────────────────────────────────────
 
-function DispBadge({ status }: { status: DispStatus }) {
+function RowStatusBadge({ status }: { status: RowStatus }) {
   const cfg = {
-    nao_enviado: { label: "Não enviado", color: "#94A3B8", bg: "#F1F5F9", Icon: Clock },
-    agendado:    { label: "Agendado",    color: "#D97706", bg: "#FFFBEB", Icon: Calendar },
-    enviado:     { label: "Enviado",     color: "#2E60FF", bg: "#EEF2FF", Icon: Send },
-    falhou:      { label: "Falhou",      color: "#DC2626", bg: "#FEF2F2", Icon: XCircle },
+    nao_enviado: { label: "Não enviado", color: "#94A3B8", bg: "#F1F5F9" },
+    parcial:     { label: "Parcial",     color: "#2E60FF", bg: "#EEF2FF" },
+    concluido:   { label: "Concluído",   color: "#059669", bg: "#ECFDF5" },
+    reprovado:   { label: "Reprovado",   color: "#DC2626", bg: "#FEF2F2" },
   }[status];
-  const { Icon } = cfg;
   return (
-    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+    <span className="text-xs px-2.5 py-1 rounded-full font-medium"
       style={{ color: cfg.color, backgroundColor: cfg.bg }}>
-      <Icon className="w-3 h-3" />{cfg.label}
+      {cfg.label}
     </span>
+  );
+}
+
+// ── UltimoDisparoCel ──────────────────────────────────────────────────────────
+
+function UltimoDisparoCel({ row }: { row: ComputedRow }) {
+  const disparos = row.disparos ?? [];
+
+  const waSent   = disparos.some((d) => d.tipo !== "email" && d.status === "enviado");
+  const mailSent = disparos.some((d) => d.tipo === "email" && d.status === "enviado");
+
+  const DispStatusBadge = () => {
+    const cfg = {
+      nao_enviado: { label: "Não enviado", color: "#94A3B8", bg: "#F1F5F9", Icon: Clock },
+      agendado:    { label: "Agendado",    color: "#D97706", bg: "#FFFBEB", Icon: Calendar },
+      enviado:     { label: "Enviado",     color: "#2E60FF", bg: "#EEF2FF", Icon: Send },
+      falhou:      { label: "Falhou",      color: "#DC2626", bg: "#FEF2F2", Icon: XCircle },
+    }[row.dispStatus];
+    const { Icon } = cfg;
+    return (
+      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+        style={{ color: cfg.color, backgroundColor: cfg.bg }}>
+        <Icon className="w-3 h-3" />{cfg.label}
+      </span>
+    );
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <DispStatusBadge />
+      {row.ultimoDisparo && (
+        <p className="text-xs" style={{ color: "#94A3B8" }}>
+          {formatDt(row.ultimoDisparo.enviado_em ?? row.ultimoDisparo.agendado_para ?? row.ultimoDisparo.created_at)}
+        </p>
+      )}
+      {/* Canais */}
+      <div className="flex items-center gap-2">
+        {/* WhatsApp */}
+        <div className="flex items-center gap-0.5">
+          <MessageSquare className="w-3.5 h-3.5" style={{ color: waSent ? "#16A34A" : "#CBD5E1" }} />
+          {waSent && (
+            <span className="text-xs font-bold leading-none" style={{ color: "#16A34A", letterSpacing: "-1px" }}>✓✓</span>
+          )}
+        </div>
+        {/* Email */}
+        <div className="flex items-center gap-0.5">
+          <Mail className="w-3.5 h-3.5" style={{ color: mailSent ? "#2E60FF" : "#CBD5E1" }} />
+          {mailSent && (
+            <span className="text-xs font-bold leading-none" style={{ color: "#2E60FF", letterSpacing: "-1px" }}>✓✓</span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -224,13 +293,19 @@ function Row({
         {/* Fornecedor */}
         <td className="px-5 py-3.5">
           <p className="text-sm font-medium" style={{ color: "#0F172A" }}>{row.fornecedor.razao_social}</p>
-          <div className="flex items-center gap-1 mt-0.5">
-            <Phone className="w-3 h-3" style={{ color: "#94A3B8" }} />
-            <span className="text-xs font-mono" style={{ color: "#64748B" }}>
-              {row.fornecedor.contato_whatsapp}
-            </span>
-            {row.fornecedor.contato_nome && (
-              <span className="text-xs" style={{ color: "#94A3B8" }}>· {row.fornecedor.contato_nome}</span>
+          {row.fornecedor.contato_nome && (
+            <p className="text-xs mt-0.5" style={{ color: "#334155" }}>{row.fornecedor.contato_nome}</p>
+          )}
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+            <div className="flex items-center gap-1">
+              <Phone className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+              <span className="text-xs font-mono" style={{ color: "#64748B" }}>{row.fornecedor.contato_whatsapp}</span>
+            </div>
+            {row.fornecedor.contato_email && (
+              <div className="flex items-center gap-1">
+                <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                <span className="text-xs" style={{ color: "#64748B" }}>{row.fornecedor.contato_email}</span>
+              </div>
             )}
           </div>
         </td>
@@ -257,12 +332,12 @@ function Row({
 
         {/* Último disparo */}
         <td className="px-5 py-3.5">
-          <DispBadge status={row.dispStatus} />
-          {row.ultimoDisparo && (
-            <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
-              {formatDt(row.ultimoDisparo.enviado_em ?? row.ultimoDisparo.agendado_para ?? row.ultimoDisparo.created_at)}
-            </p>
-          )}
+          <UltimoDisparoCel row={row} />
+        </td>
+
+        {/* Status */}
+        <td className="px-5 py-3.5">
+          <RowStatusBadge status={row.rowStatus} />
         </td>
 
         {/* Ações */}
@@ -326,7 +401,7 @@ function Row({
       {/* Agendamento inline */}
       {mostrarAg && (
         <tr style={{ borderBottom: "1px solid #F1F5F9", backgroundColor: "#FFFBEB" }}>
-          <td colSpan={6} className="px-5 py-3">
+          <td colSpan={7} className="px-5 py-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium" style={{ color: "#92400E" }}>Agendar envio:</span>
               <input
@@ -363,7 +438,7 @@ function Row({
 function GroupHeader({ label, count }: { label: string; count: number }) {
   return (
     <tr>
-      <td colSpan={6} style={{ backgroundColor: "#F8FAFC", borderBottom: "1px solid #E2E8F0", borderTop: "1px solid #E2E8F0" }}>
+      <td colSpan={7} style={{ backgroundColor: "#F8FAFC", borderBottom: "1px solid #E2E8F0", borderTop: "1px solid #E2E8F0" }}>
         <div className="flex items-center gap-2 px-5 py-2">
           <Users className="w-3.5 h-3.5" style={{ color: "#64748B" }} />
           <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#64748B" }}>
@@ -517,12 +592,15 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
         if (filtroStatus === "falhou"       && r.dispStatus !== "falhou")      return false;
         if (filtroStatus === "respondeu"    && r.docStatus  !== "respondeu")   return false;
         if (filtroStatus === "pendente_doc" && r.docStatus  !== "pendente" && r.docStatus !== "parcial") return false;
+        if (filtroStatus === "reprovado"    && r.rowStatus  !== "reprovado")   return false;
+        if (filtroStatus === "concluido"    && r.rowStatus  !== "concluido")   return false;
       }
       if (busca) {
         const q = busca.toLowerCase();
         if (
           !r.fornecedor.razao_social.toLowerCase().includes(q) &&
-          !r.faturamento.nome_campanha.toLowerCase().includes(q)
+          !r.faturamento.nome_campanha.toLowerCase().includes(q) &&
+          !(r.fornecedor.contato_email ?? "").toLowerCase().includes(q)
         ) return false;
       }
       return true;
@@ -574,7 +652,7 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
             type="text"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar fornecedor ou campanha..."
+            placeholder="Buscar fornecedor, campanha ou email..."
             className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border outline-none bg-white"
             style={{ borderColor: "#E2E8F0", color: "#334155" }}
           />
@@ -608,6 +686,8 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
           <option value="falhou">Falhou</option>
           <option value="respondeu">Respondeu</option>
           <option value="pendente_doc">Docs pendentes</option>
+          <option value="reprovado">Reprovado</option>
+          <option value="concluido">Concluído</option>
         </select>
 
         <span className="text-xs ml-auto" style={{ color: "#94A3B8" }}>
@@ -630,6 +710,7 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Valor</th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Documentos</th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Último disparo</th>
+                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Status</th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Ações</th>
               </tr>
             </thead>
@@ -653,9 +734,16 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
       )}
 
       {/* Legenda de cores */}
-      <div className="flex items-center gap-2 mt-3">
-        <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }} />
-        <span className="text-xs" style={{ color: "#94A3B8" }}>Linha verde = todos os documentos preenchidos</span>
+      <div className="flex items-center gap-4 mt-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }} />
+          <span className="text-xs" style={{ color: "#94A3B8" }}>Verde = todos os documentos preenchidos</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <MessageSquare className="w-3 h-3" style={{ color: "#16A34A" }} />
+          <span className="text-xs font-bold" style={{ color: "#16A34A" }}>✓✓</span>
+          <span className="text-xs" style={{ color: "#94A3B8" }}>= canal enviado com sucesso</span>
+        </div>
       </div>
     </div>
   );

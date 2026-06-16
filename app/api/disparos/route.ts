@@ -205,3 +205,34 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ disparos: data ?? [] });
 }
+
+// ── PATCH — Atualiza agendado_para de um disparo agendado ─────────────────────
+
+export async function PATCH(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
+  const body = await req.json() as { id: string; agendado_para: string };
+  const { id, agendado_para } = body;
+  if (!id || !agendado_para) {
+    return NextResponse.json({ error: 'id e agendado_para obrigatórios' }, { status: 400 });
+  }
+
+  const admin = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+
+  const { data, error } = await admin
+    .from('disparos')
+    .update({ agendado_para })
+    .eq('id', id)
+    .eq('status', 'agendado')
+    .select()
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ disparo: data });
+}

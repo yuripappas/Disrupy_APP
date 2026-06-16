@@ -29,7 +29,7 @@ export default async function DisparosPage() {
     .select(`
       id, link_token, valor, valor_total, tipo_iclips, envio_inicial_em,
       faturamento:faturamentos ( id, nome_campanha, iclips_job_id ),
-      fornecedor:fornecedores  ( id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp ),
+      fornecedor:fornecedores  ( id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp, contato_email, telefone ),
       documentos               ( id, status ),
       disparos                 ( id, tipo, subtipo, status, created_at, enviado_em, agendado_para )
     `)

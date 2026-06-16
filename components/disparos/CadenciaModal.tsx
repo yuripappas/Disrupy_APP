@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import {
-  X, CheckCircle, Clock, SkipForward, Mail, MessageSquare, AlertCircle,
+  X, CheckCircle, Clock, SkipForward, Mail, MessageSquare,
+  AlertCircle, Edit2, Calendar, Loader2,
 } from "lucide-react";
 import type { FFRow } from "./MonitoramentoClient";
 
@@ -54,57 +56,119 @@ function fmt(iso: string | null | undefined) {
   });
 }
 
+function fmtDate(iso: string | null | undefined) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
 function addDays(date: Date, days: number) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
 }
 
-// ── StatusIcon ────────────────────────────────────────────────────────────────
-
-function StatusIcon({ status }: { status: StepStatus }) {
-  const map = {
-    sent:      { Icon: CheckCircle, color: "#16A34A", bg: "#DCFCE7", border: "#16A34A" },
-    failed:    { Icon: AlertCircle, color: "#DC2626", bg: "#FEF2F2", border: "#DC2626" },
-    scheduled: { Icon: Clock,       color: "#D97706", bg: "#FFFBEB", border: "#D97706" },
-    skipped:   { Icon: SkipForward, color: "#94A3B8", bg: "#F1F5F9", border: "#CBD5E1" },
-    pending:   { Icon: Clock,       color: "#CBD5E1", bg: "#F8FAFC", border: "#E2E8F0" },
-  }[status];
-  const { Icon, color, bg, border } = map;
-  return (
-    <div
-      className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-      style={{ backgroundColor: bg, border: `2px solid ${border}` }}
-    >
-      <Icon className="w-3.5 h-3.5" style={{ color }} />
-    </div>
-  );
+function toDatetimeLocal(iso: string) {
+  const d = new Date(iso);
+  d.setSeconds(0, 0);
+  return d.toISOString().slice(0, 16);
 }
 
-// ── ChannelStatus ─────────────────────────────────────────────────────────────
+function minDtLocal() {
+  const d = new Date(Date.now() + 5 * 60 * 1000);
+  d.setSeconds(0, 0);
+  return d.toISOString().slice(0, 16);
+}
 
-function ChannelStatus({
+// ── ChannelPill ───────────────────────────────────────────────────────────────
+
+function ChannelPill({
   icon: Icon,
   label,
-  color,
-  sent,
+  activeColor,
+  active,
   failed,
   scheduled,
 }: {
   icon: React.ElementType;
   label: string;
-  color: string;
-  sent: boolean;
+  activeColor: string;
+  active: boolean;
   failed: boolean;
   scheduled: boolean;
 }) {
-  const statusColor = sent ? "#16A34A" : failed ? "#DC2626" : scheduled ? "#D97706" : "#CBD5E1";
-  const statusIcon  = sent ? "✓" : failed ? "✗" : scheduled ? "⏰" : "–";
+  const color  = active ? activeColor : failed ? "#DC2626" : scheduled ? "#D97706" : "#CBD5E1";
+  const bg     = active ? (activeColor === "#16A34A" ? "#DCFCE7" : "#EEF2FF")
+               : failed ? "#FEF2F2" : scheduled ? "#FFFBEB" : "#F1F5F9";
+  const mark   = active ? "✓✓" : failed ? "✗" : scheduled ? "⏰" : "–";
+  const markColor = active ? activeColor : failed ? "#DC2626" : scheduled ? "#D97706" : "#CBD5E1";
+
   return (
-    <div className="flex items-center gap-1">
-      <Icon className="w-3 h-3" style={{ color }} />
-      <span className="text-xs font-medium" style={{ color: statusColor }}>{statusIcon}</span>
-      <span className="text-xs" style={{ color: "#94A3B8" }}>{label}</span>
+    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+      style={{ backgroundColor: bg }}>
+      <Icon className="w-3.5 h-3.5" style={{ color }} />
+      <span className="text-xs font-semibold" style={{ color: markColor }}>{mark}</span>
+      <span className="text-xs" style={{ color }}>{label}</span>
+    </div>
+  );
+}
+
+// ── EditDateForm ──────────────────────────────────────────────────────────────
+
+function EditDateForm({
+  disparoId,
+  currentDate,
+  onSalvo,
+  onCancelar,
+}: {
+  disparoId: string;
+  currentDate: string | null;
+  onSalvo: (novaData: string) => void;
+  onCancelar: () => void;
+}) {
+  const [novaData, setNovaData] = useState(currentDate ? toDatetimeLocal(currentDate) : "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro]         = useState<string | null>(null);
+
+  async function salvar() {
+    if (!novaData) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      const res = await fetch("/api/disparos", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: disparoId, agendado_para: new Date(novaData).toISOString() }),
+      });
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? "Erro"); }
+      onSalvo(new Date(novaData).toISOString());
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao salvar");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2 flex-wrap">
+      <input
+        type="datetime-local"
+        value={novaData}
+        min={minDtLocal()}
+        onChange={(e) => setNovaData(e.target.value)}
+        className="text-xs px-2 py-1 rounded-lg border outline-none bg-white"
+        style={{ borderColor: "#7C3AED", color: "#334155" }}
+      />
+      <button
+        onClick={salvar}
+        disabled={!novaData || salvando}
+        className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-medium text-white"
+        style={{ backgroundColor: !novaData || salvando ? "#94A3B8" : "#7C3AED" }}
+      >
+        {salvando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Calendar className="w-3 h-3" />}
+        {salvando ? "Salvando…" : "Confirmar"}
+      </button>
+      <button onClick={onCancelar} className="text-xs" style={{ color: "#94A3B8" }}>Cancelar</button>
+      {erro && <span className="text-xs" style={{ color: "#DC2626" }}>{erro}</span>}
     </div>
   );
 }
@@ -124,15 +188,19 @@ function StepRow({
   jaRespondeu: boolean;
   showLine: boolean;
 }) {
-  const byStep = disparos.filter((d) =>
+  const [editando, setEditando] = useState(false);
+  const [localDisparos, setLocalDisparos] = useState(disparos);
+
+  const byStep = localDisparos.filter((d) =>
     stepDef.isEvento
       ? d.subtipo === stepDef.step
       : (d.subtipo === stepDef.step || (stepDef.step === "link_inicial" && !d.subtipo)),
   );
 
-  const wasSent    = byStep.some((d) => d.status === "enviado");
-  const hasFailed  = byStep.some((d) => d.status === "falhou");
+  const wasSent     = byStep.some((d) => d.status === "enviado");
+  const hasFailed   = byStep.some((d) => d.status === "falhou");
   const isScheduled = byStep.some((d) => d.status === "agendado");
+  const agendadoDsp = byStep.find((d) => d.status === "agendado");
 
   let stepStatus: StepStatus;
   if (wasSent)                                                    stepStatus = "sent";
@@ -148,35 +216,72 @@ function StepRow({
   const scheduledDate =
     inicialDate && stepDef.dias !== null ? addDays(inicialDate, stepDef.dias) : null;
 
-  let subLabel: string;
+  // Status icon config
+  const iconCfg = {
+    sent:      { Icon: CheckCircle, color: "#16A34A", bg: "#DCFCE7", border: "#16A34A" },
+    failed:    { Icon: AlertCircle, color: "#DC2626", bg: "#FEF2F2", border: "#DC2626" },
+    scheduled: { Icon: Clock,       color: "#D97706", bg: "#FFFBEB", border: "#D97706" },
+    skipped:   { Icon: SkipForward, color: "#94A3B8", bg: "#F1F5F9", border: "#CBD5E1" },
+    pending:   { Icon: Clock,       color: "#CBD5E1", bg: "#F8FAFC", border: "#E2E8F0" },
+  }[stepStatus];
+  const { Icon: StatusIcon } = iconCfg;
+
+  // Per-channel sent/failed/scheduled
+  const waSent      = byStep.some(d => d.tipo !== "email" && d.status === "enviado");
+  const waFailed    = !waSent && byStep.some(d => d.tipo !== "email" && d.status === "falhou");
+  const waScheduled = !waSent && !waFailed && byStep.some(d => d.tipo !== "email" && d.status === "agendado");
+  const mailSent    = byStep.some(d => d.tipo === "email" && d.status === "enviado");
+  const mailFailed  = !mailSent && byStep.some(d => d.tipo === "email" && d.status === "falhou");
+  const mailSched   = !mailSent && !mailFailed && byStep.some(d => d.tipo === "email" && d.status === "agendado");
+
+  // Date label
+  let dataLabel: string;
+  let dataValue: string | null = null;
   if (stepStatus === "sent") {
-    subLabel = `Enviado em ${fmt(lastSent?.enviado_em ?? lastSent?.created_at)}`;
-  } else if (stepStatus === "failed") {
-    subLabel = "Falhou ao enviar";
-  } else if (stepStatus === "scheduled") {
-    const ag = byStep.find((d) => d.status === "agendado");
-    subLabel = `Agendado para ${fmt(ag?.agendado_para)}`;
+    dataLabel = fmt(lastSent?.enviado_em ?? lastSent?.created_at);
+  } else if (stepStatus === "scheduled" && agendadoDsp) {
+    dataLabel = `Agendado para ${fmt(agendadoDsp.agendado_para)}`;
+    dataValue = agendadoDsp.agendado_para;
   } else if (stepStatus === "skipped") {
-    subLabel = "Não necessário — fornecedor já respondeu";
+    dataLabel = "Pulado — fornecedor já respondeu";
   } else if (stepDef.isEvento) {
-    subLabel = stepDef.descricao;
+    dataLabel = stepDef.descricao;
   } else if (scheduledDate) {
-    subLabel = `Previsto para ${scheduledDate.toLocaleDateString("pt-BR")} (Dia ${stepDef.dias})`;
+    dataLabel = `Previsto: ${fmtDate(scheduledDate.toISOString())} (Dia ${stepDef.dias})`;
   } else {
-    subLabel = "Aguardando envio do link inicial";
+    dataLabel = "Aguardando envio do link inicial";
   }
+
+  function handleSalvoData(novaData: string) {
+    if (agendadoDsp) {
+      setLocalDisparos((prev) =>
+        prev.map((d) => d.id === agendadoDsp.id ? { ...d, agendado_para: novaData } : d)
+      );
+    }
+    setEditando(false);
+  }
+
+  const canEdit = stepStatus === "scheduled" && agendadoDsp;
 
   return (
     <div className="flex items-start gap-3">
-      <div className="flex flex-col items-center">
-        <StatusIcon status={stepStatus} />
+      {/* Timeline dot */}
+      <div className="flex flex-col items-center flex-shrink-0">
+        <div
+          className="w-7 h-7 rounded-full flex items-center justify-center"
+          style={{ backgroundColor: iconCfg.bg, border: `2px solid ${iconCfg.border}` }}
+        >
+          <StatusIcon className="w-3.5 h-3.5" style={{ color: iconCfg.color }} />
+        </div>
         {showLine && (
           <div className="w-0.5 h-4 mt-1" style={{ backgroundColor: "#F1F5F9" }} />
         )}
       </div>
-      <div className="flex-1 pb-2">
+
+      {/* Content */}
+      <div className="flex-1 pb-2 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium" style={{ color: "#0F172A" }}>
+          <span className="text-sm font-semibold" style={{ color: "#0F172A" }}>
             {stepDef.nome}
           </span>
           {wasSent && byStep.length > 1 && (
@@ -185,30 +290,57 @@ function StepRow({
             </span>
           )}
         </div>
-        <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>{subLabel}</p>
-        {/* Status por canal */}
-        <div className="flex items-center gap-3 mt-1.5">
-          {stepDef.whatsapp && (
-            <ChannelStatus
-              icon={MessageSquare}
-              label="WhatsApp"
-              color="#16A34A"
-              sent={byStep.filter(d => d.tipo !== "email" && d.status === "enviado").length > 0}
-              failed={!byStep.some(d => d.tipo !== "email" && d.status === "enviado") && byStep.some(d => d.tipo !== "email" && d.status === "falhou")}
-              scheduled={!byStep.some(d => d.tipo !== "email" && (d.status === "enviado" || d.status === "falhou")) && byStep.some(d => d.tipo !== "email" && d.status === "agendado")}
-            />
-          )}
-          {stepDef.email && (
-            <ChannelStatus
-              icon={Mail}
-              label="Email"
-              color="#2E60FF"
-              sent={byStep.filter(d => d.tipo === "email" && d.status === "enviado").length > 0}
-              failed={!byStep.some(d => d.tipo === "email" && d.status === "enviado") && byStep.some(d => d.tipo === "email" && d.status === "falhou")}
-              scheduled={!byStep.some(d => d.tipo === "email" && (d.status === "enviado" || d.status === "falhou")) && byStep.some(d => d.tipo === "email" && d.status === "agendado")}
-            />
+
+        {/* Data */}
+        <div className="flex items-center gap-2 mt-0.5">
+          <p className="text-xs" style={{ color: "#94A3B8" }}>{dataLabel}</p>
+          {canEdit && !editando && (
+            <button
+              onClick={() => setEditando(true)}
+              className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded hover:bg-slate-100"
+              style={{ color: "#7C3AED" }}
+              title="Ajustar data"
+            >
+              <Edit2 className="w-2.5 h-2.5" /> Ajustar
+            </button>
           )}
         </div>
+
+        {/* Edit form */}
+        {editando && agendadoDsp && (
+          <EditDateForm
+            disparoId={agendadoDsp.id}
+            currentDate={dataValue}
+            onSalvo={handleSalvoData}
+            onCancelar={() => setEditando(false)}
+          />
+        )}
+
+        {/* Canais */}
+        {(stepDef.whatsapp || stepDef.email) && (
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            {stepDef.whatsapp && (
+              <ChannelPill
+                icon={MessageSquare}
+                label="WhatsApp"
+                activeColor="#16A34A"
+                active={waSent}
+                failed={waFailed}
+                scheduled={waScheduled}
+              />
+            )}
+            {stepDef.email && (
+              <ChannelPill
+                icon={Mail}
+                label="Email"
+                activeColor="#2E60FF"
+                active={mailSent}
+                failed={mailFailed}
+                scheduled={mailSched}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -266,16 +398,11 @@ export function CadenciaModal({
           style={{ borderColor: "#F1F5F9", backgroundColor: "#F8FAFC" }}
         >
           <span style={{ color: "#64748B" }}>Documentos:</span>
-          <span
-            className="font-medium"
-            style={{
-              color: docsTotal === 0 ? "#94A3B8" : jaRespondeu ? "#059669" : "#D97706",
-            }}
-          >
-            {docsTotal === 0
-              ? "Sem documentos"
-              : jaRespondeu
-              ? `✓ Todos preenchidos (${docsTotal}/${docsTotal})`
+          <span className="font-medium" style={{
+            color: docsTotal === 0 ? "#94A3B8" : jaRespondeu ? "#059669" : "#D97706",
+          }}>
+            {docsTotal === 0 ? "Sem documentos"
+              : jaRespondeu ? `✓ Todos preenchidos (${docsTotal}/${docsTotal})`
               : `${docsFilled}/${docsTotal} preenchidos`}
           </span>
           {inicialDate && (
@@ -287,6 +414,26 @@ export function CadenciaModal({
               </span>
             </>
           )}
+        </div>
+
+        {/* Legenda canais */}
+        <div className="px-5 py-2 border-b flex items-center gap-4 text-xs flex-wrap"
+          style={{ borderColor: "#F1F5F9" }}>
+          <div className="flex items-center gap-1.5">
+            <MessageSquare className="w-3.5 h-3.5" style={{ color: "#16A34A" }} />
+            <span className="font-bold" style={{ color: "#16A34A" }}>✓✓</span>
+            <span style={{ color: "#64748B" }}>WhatsApp enviado</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Mail className="w-3.5 h-3.5" style={{ color: "#2E60FF" }} />
+            <span className="font-bold" style={{ color: "#2E60FF" }}>✓✓</span>
+            <span style={{ color: "#64748B" }}>Email enviado</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <MessageSquare className="w-3.5 h-3.5" style={{ color: "#CBD5E1" }} />
+            <span style={{ color: "#CBD5E1" }}>–</span>
+            <span style={{ color: "#94A3B8" }}>Não enviado</span>
+          </div>
         </div>
 
         {/* Timeline */}
@@ -328,16 +475,24 @@ export function CadenciaModal({
             ))}
           </div>
 
-          {/* Phone info */}
-          <div
-            className="mt-4 p-3 rounded-lg flex items-center gap-2 text-xs"
-            style={{ backgroundColor: "#F8FAFC" }}
-          >
-            <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#94A3B8" }} />
-            <span style={{ color: "#64748B" }}>WhatsApp: </span>
-            <span className="font-mono font-medium" style={{ color: "#334155" }}>
-              {ff.fornecedor.contato_whatsapp}
-            </span>
+          {/* Contact info */}
+          <div className="mt-4 p-3 rounded-lg space-y-1.5" style={{ backgroundColor: "#F8FAFC" }}>
+            <div className="flex items-center gap-2 text-xs">
+              <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#94A3B8" }} />
+              <span style={{ color: "#64748B" }}>WhatsApp: </span>
+              <span className="font-mono font-medium" style={{ color: "#334155" }}>
+                {ff.fornecedor.contato_whatsapp}
+              </span>
+            </div>
+            {ff.fornecedor.contato_email && (
+              <div className="flex items-center gap-2 text-xs">
+                <Mail className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                <span style={{ color: "#64748B" }}>Email: </span>
+                <span className="font-medium" style={{ color: "#334155" }}>
+                  {ff.fornecedor.contato_email}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
