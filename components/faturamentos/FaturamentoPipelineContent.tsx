@@ -173,6 +173,8 @@ export function FaturamentoPipelineContent({
           cnpj: ff.fornecedor.cnpj,
           contato_nome: ff.fornecedor.contato_nome,
           contato_whatsapp: ff.fornecedor.contato_whatsapp,
+          contato_email: ff.fornecedor.contato_email ?? null,
+          telefone: ff.fornecedor.telefone ?? null,
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         documentos: (ff.documentos ?? []).map((d: any) => ({ id: d.id, status: d.status })),
