@@ -34,17 +34,22 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- 3. Certidões por faturamento
+-- Nota: a constraint CHECK em `tipo` foi removida pois a tabela passou a armazenar
+-- também empenhos, proposta, evidências e ofício (qualquer string é válida).
 CREATE TABLE IF NOT EXISTS faturamento_certidoes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   faturamento_id UUID NOT NULL REFERENCES faturamentos(id) ON DELETE CASCADE,
-  tipo TEXT NOT NULL
-    CHECK (tipo IN ('federal', 'estadual', 'municipal', 'fgts', 'trabalhista', 'falencia', 'outro')),
+  tipo TEXT NOT NULL,
   label TEXT NOT NULL,
   arquivo_url TEXT,
   nome_arquivo TEXT,
   tamanho_bytes INTEGER,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Remover constraint antiga se existir (rode manualmente se a tabela já existia)
+ALTER TABLE faturamento_certidoes
+  DROP CONSTRAINT IF EXISTS faturamento_certidoes_tipo_check;
 
 ALTER TABLE faturamento_certidoes ENABLE ROW LEVEL SECURITY;
 
