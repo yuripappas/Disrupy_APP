@@ -30,6 +30,16 @@ type Certidao = {
   tamanho_bytes: number | null;
 };
 
+type GlobalCertidao = {
+  id: string;
+  tipo: string;
+  label: string;
+  validade: string;
+  arquivo_url: string | null;
+  nome_arquivo: string | null;
+  tamanho_bytes: number | null;
+};
+
 // Tipos de certidões que a agência precisa anexar em cada faturamento
 const TIPOS_CERTIDOES = [
   { tipo: "federal",     label: "Federal — Receita Federal + PGFN" },
@@ -326,20 +336,69 @@ export function Etapa4Section({
     return Math.max(1, n);
   });
 
-  // Relê do banco ao montar — garante que uploads feitos antes de trocar de etapa
-  // continuem visíveis ao voltar para esta seção.
+  // Relê certidões ao montar e auto-popula a partir das certidões globais da agência
+  // se ainda não foram copiadas para este faturamento.
   useEffect(() => {
-    fetch(`/api/certidoes?faturamentoId=${faturamentoId}`)
-      .then((r) => r.json())
-      .then((data: { certidoes?: Certidao[] }) => {
-        if (data.certidoes && data.certidoes.length > 0) {
-          setCertidoes(data.certidoes);
-          const n = data.certidoes.filter((c) => c.tipo.startsWith("empenho_")).length;
+    let cancelled = false;
+
+    async function init() {
+      try {
+        const [perFatRes, globaisRes] = await Promise.all([
+          fetch(`/api/certidoes?faturamentoId=${faturamentoId}`),
+          fetch("/api/certidoes-globais"),
+        ]);
+
+        const perFatData  = await perFatRes.json()  as { certidoes?: Certidao[] };
+        const globaisData = await globaisRes.json() as { certidoes?: GlobalCertidao[] };
+
+        const existentes: Certidao[] = perFatData.certidoes ?? certidoesIniciais;
+        const globais: GlobalCertidao[] = globaisData.certidoes ?? [];
+
+        const tiposExistentes = new Set(existentes.map((c) => c.tipo));
+
+        // Auto-cria entradas per-faturamento para certidões padrão que têm arquivo global
+        const autoPromises = TIPOS_CERTIDOES
+          .filter(({ tipo }) => !tiposExistentes.has(tipo))
+          .map(({ tipo, label }) => {
+            const global = globais.find((g) => g.tipo === tipo && g.arquivo_url);
+            if (!global) return Promise.resolve(null);
+            return fetch("/api/certidoes", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                faturamentoId,
+                tipo,
+                label,
+                viewUrl:  global.arquivo_url,
+                fileName: global.nome_arquivo ?? label,
+                fileSize: global.tamanho_bytes ?? 0,
+              }),
+            })
+              .then((r) => r.ok ? r.json() : null)
+              .then((j: { certidao?: Certidao } | null) => j?.certidao ?? null)
+              .catch(() => null);
+          });
+
+        const autoResults = await Promise.all(autoPromises);
+        const novas: Certidao[] = autoResults.filter((c): c is Certidao => c !== null);
+
+        if (!cancelled) {
+          const combined = [...existentes, ...novas].reduce<Certidao[]>((acc, c) => {
+            if (!acc.find((x) => x.tipo === c.tipo)) acc.push(c);
+            return acc;
+          }, []);
+          setCertidoes(combined);
+          const n = combined.filter((c) => c.tipo.startsWith("empenho_")).length;
           if (n > 0) setEmpenhoCount((prev) => Math.max(prev, n));
         }
-      })
-      .catch(() => {}); // silently fail — usa props como fallback
-  }, [faturamentoId]);
+      } catch {
+        // silently fail — usa props como fallback
+      }
+    }
+
+    void init();
+    return () => { cancelled = true; };
+  }, [faturamentoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCertidaoSalva = useCallback((c: Certidao) => {
     setCertidoes((prev) => {
