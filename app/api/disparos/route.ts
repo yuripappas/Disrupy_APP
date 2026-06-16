@@ -57,8 +57,8 @@ export async function POST(req: NextRequest) {
   const { data: ff, error: ffErr } = await admin
     .from('faturamento_fornecedores')
     .select(`
-      id, link_token, envio_inicial_em,
-      faturamento:faturamentos ( nome_campanha ),
+      id, link_token, envio_inicial_em, faturamento_id,
+      faturamento:faturamentos ( id, nome_campanha ),
       fornecedor:fornecedores ( razao_social, contato_whatsapp, contato_nome )
     `)
     .eq('id', ffId)
@@ -159,6 +159,30 @@ export async function POST(req: NextRequest) {
       .from('faturamento_fornecedores')
       .update({ envio_inicial_em: agora })
       .eq('id', ffId);
+
+    // Auto-avança etapa 1 → 2 no primeiro envio do faturamento
+    const faturamentoId = (ff as unknown as { faturamento_id: string }).faturamento_id;
+    if (faturamentoId) {
+      const { data: etapas } = await admin
+        .from('faturamento_etapas')
+        .select('id, numero, status')
+        .eq('faturamento_id', faturamentoId)
+        .order('numero');
+
+      const etapa1 = etapas?.find(e => e.numero === 1 && e.status === 'em_andamento');
+      if (etapa1) {
+        const etapa2 = etapas?.find(e => e.numero === 2);
+        await admin.from('faturamento_etapas').update({ status: 'concluida' }).eq('id', etapa1.id);
+        if (etapa2) {
+          await admin.from('faturamento_etapas')
+            .update({ status: 'em_andamento', iniciada_em: agora })
+            .eq('id', etapa2.id);
+        }
+        await admin.from('faturamentos')
+          .update({ etapa: 'aguardando_docs', updated_at: agora })
+          .eq('id', faturamentoId);
+      }
+    }
   }
 
   return NextResponse.json({ ok: true, agendado: false, numero: whatsapp });

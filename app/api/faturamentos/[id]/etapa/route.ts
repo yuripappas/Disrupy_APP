@@ -12,17 +12,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-// Mapa: número da etapa → slug em faturamentos.etapa
+// Mapa: número da etapa → slug em faturamentos.etapa (7 etapas após remoção da etapa 1 original)
 const ETAPA_SLUG: Record<number, string> = {
-  1: 'rascunho',
-  2: 'iniciando',
-  3: 'aguardando_docs',
-  4: 'em_revisao',
-  5: 'docs_agencia',
-  6: 'processo_completo',
-  7: 'publicado',
-  8: 'validado',
-  9: 'concluido',
+  1: 'iniciando',
+  2: 'aguardando_docs',
+  3: 'em_revisao',
+  4: 'docs_agencia',
+  5: 'processo_completo',
+  6: 'publicado',
+  7: 'validado',
 };
 
 export async function POST(

@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import {
   Send, Clock, CheckCircle, XCircle, Calendar, Search,
-  ChevronDown, ChevronUp, Loader2, MessageSquare, Phone,
-  Filter, ExternalLink, GitBranch,
+  Loader2, MessageSquare, Phone, Filter, ExternalLink, GitBranch,
+  Users,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { CadenciaModal } from "./CadenciaModal";
@@ -30,6 +30,8 @@ export type FFRow = {
   id: string;
   link_token: string;
   valor_total: number;
+  valor?: number;
+  tipo?: string | null;
   envio_inicial_em?: string | null;
   faturamento: { id: string; nome_campanha: string; iclips_job_id: string | null };
   fornecedor:  { id: string; razao_social: string; cnpj: string; contato_nome: string | null; contato_whatsapp: string };
@@ -81,6 +83,12 @@ function minDtLocal() {
   const d = new Date(Date.now() + 5 * 60 * 1000);
   d.setSeconds(0, 0);
   return d.toISOString().slice(0, 16);
+}
+
+function tipoLabel(tipo: string | null | undefined) {
+  if (tipo === "midia")    return "Mídia";
+  if (tipo === "producao") return "Produção";
+  return "Outros";
 }
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
@@ -135,40 +143,6 @@ function DispBadge({ status }: { status: DispStatus }) {
   );
 }
 
-// ── HistoricoPanel ────────────────────────────────────────────────────────────
-
-function HistoricoPanel({ disparos }: { disparos: DisparoRecord[] }) {
-  if (disparos.length === 0) {
-    return <p className="text-xs py-2 px-4" style={{ color: "#94A3B8" }}>Nenhuma mensagem enviada ainda.</p>;
-  }
-  const sorted = [...disparos].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
-  return (
-    <div className="space-y-1 py-2 px-4">
-      {sorted.map((d) => {
-        const ok = d.status === "enviado";
-        const ag = d.status === "agendado";
-        return (
-          <div key={d.id} className="flex items-center gap-3 text-xs py-1">
-            {ok ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#059669" }} />
-              : ag ? <Calendar className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#D97706" }} />
-              : <XCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#DC2626" }} />}
-            <span className="font-medium" style={{ color: "#334155" }}>
-              {ok ? "Enviado" : ag ? "Agendado para" : "Falhou"}
-            </span>
-            <span style={{ color: "#94A3B8" }}>
-              {ok ? formatDt(d.enviado_em ?? d.created_at)
-                : ag ? formatDt(d.agendado_para)
-                : formatDt(d.created_at)}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // ── Row ───────────────────────────────────────────────────────────────────────
 
 function Row({
@@ -180,15 +154,16 @@ function Row({
   onAtualizar: (ffId: string, disparo: DisparoRecord) => void;
   onCadencia: (ff: FFRow) => void;
 }) {
-  const [expanded, setExpanded]     = useState(false);
-  const [enviando, setEnviando]     = useState(false);
-  const [agendando, setAgendando]   = useState(false);
-  const [mostrarAg, setMostrarAg]   = useState(false);
-  const [dataAg, setDataAg]         = useState("");
-  const [erro, setErro]             = useState<string | null>(null);
-  const [enviado, setEnviado]       = useState(false);
+  const [enviando, setEnviando]   = useState(false);
+  const [agendando, setAgendando] = useState(false);
+  const [mostrarAg, setMostrarAg] = useState(false);
+  const [dataAg, setDataAg]       = useState("");
+  const [erro, setErro]           = useState<string | null>(null);
+  const [enviado, setEnviado]     = useState(false);
 
   const portalUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${row.link_token}`;
+  const docsFilled = (row.documentos ?? []).filter((d) => d.status !== "pendente").length;
+  const isRespondeu = row.docStatus === "respondeu";
 
   async function enviarAgora() {
     setEnviando(true); setErro(null);
@@ -237,11 +212,15 @@ function Row({
     });
   }
 
-  const docsFilled = (row.documentos ?? []).filter((d) => d.status !== "pendente").length;
-
   return (
     <>
-      <tr className="hover:bg-slate-50 transition-colors" style={{ borderBottom: "1px solid #F1F5F9" }}>
+      <tr
+        className="transition-colors"
+        style={{
+          borderBottom: "1px solid #F1F5F9",
+          backgroundColor: isRespondeu ? "#F0FDF4" : undefined,
+        }}
+      >
         {/* Fornecedor */}
         <td className="px-5 py-3.5">
           <p className="text-sm font-medium" style={{ color: "#0F172A" }}>{row.fornecedor.razao_social}</p>
@@ -256,12 +235,19 @@ function Row({
           </div>
         </td>
 
-        {/* Faturamento */}
+        {/* Campanha */}
         <td className="px-5 py-3.5">
           <p className="text-sm" style={{ color: "#334155" }}>{row.faturamento.nome_campanha}</p>
           {row.faturamento.iclips_job_id && (
             <p className="text-xs font-mono mt-0.5" style={{ color: "#94A3B8" }}>{row.faturamento.iclips_job_id}</p>
           )}
+        </td>
+
+        {/* Valor repasse */}
+        <td className="px-5 py-3.5">
+          <p className="text-sm font-medium tabular-nums" style={{ color: "#334155" }}>
+            {formatCurrency(row.valor ?? 0)}
+          </p>
         </td>
 
         {/* Documentos */}
@@ -281,8 +267,8 @@ function Row({
 
         {/* Ações */}
         <td className="px-5 py-3.5">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Enviar agora */}
+          <div className="flex items-center gap-1.5">
+            {/* Enviar */}
             <button
               onClick={enviarAgora}
               disabled={enviando}
@@ -312,20 +298,6 @@ function Row({
               Agendar
             </button>
 
-            {/* Histórico */}
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors"
-              style={{
-                backgroundColor: expanded ? "#EEF2FF" : "#F1F5F9",
-                color: expanded ? "#2E60FF" : "#64748B",
-              }}
-            >
-              <MessageSquare className="w-3 h-3" />
-              {row.disparos?.length ?? 0}
-              {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            </button>
-
             {/* Cadência */}
             <button
               onClick={() => onCadencia(row)}
@@ -340,8 +312,9 @@ function Row({
             {/* Portal */}
             <a
               href={portalUrl} target="_blank" rel="noreferrer"
-              className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg"
+              className="flex items-center justify-center w-7 h-7 rounded-lg"
               style={{ backgroundColor: "#F1F5F9", color: "#64748B" }}
+              title="Ver portal do fornecedor"
             >
               <ExternalLink className="w-3 h-3" />
             </a>
@@ -353,7 +326,7 @@ function Row({
       {/* Agendamento inline */}
       {mostrarAg && (
         <tr style={{ borderBottom: "1px solid #F1F5F9", backgroundColor: "#FFFBEB" }}>
-          <td colSpan={5} className="px-5 py-3">
+          <td colSpan={6} className="px-5 py-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium" style={{ color: "#92400E" }}>Agendar envio:</span>
               <input
@@ -381,29 +354,134 @@ function Row({
           </td>
         </tr>
       )}
-
-      {/* Histórico de mensagens */}
-      {expanded && (
-        <tr style={{ borderBottom: "1px solid #F1F5F9", backgroundColor: "#F8FAFC" }}>
-          <td colSpan={5}>
-            <HistoricoPanel disparos={row.disparos ?? []} />
-          </td>
-        </tr>
-      )}
     </>
+  );
+}
+
+// ── GroupHeader ───────────────────────────────────────────────────────────────
+
+function GroupHeader({ label, count }: { label: string; count: number }) {
+  return (
+    <tr>
+      <td colSpan={6} style={{ backgroundColor: "#F8FAFC", borderBottom: "1px solid #E2E8F0", borderTop: "1px solid #E2E8F0" }}>
+        <div className="flex items-center gap-2 px-5 py-2">
+          <Users className="w-3.5 h-3.5" style={{ color: "#64748B" }} />
+          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#64748B" }}>
+            {label}
+          </span>
+          <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "#E2E8F0", color: "#64748B" }}>
+            {count}
+          </span>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ── EnviarParaTodosButton ─────────────────────────────────────────────────────
+
+function EnviarParaTodosButton({
+  rows,
+  onAtualizar,
+}: {
+  rows: ComputedRow[];
+  onAtualizar: (ffId: string, disparo: DisparoRecord) => void;
+}) {
+  const [estado, setEstado] = useState<"idle" | "enviando" | "concluido">("idle");
+  const [progresso, setProgresso] = useState({ done: 0, total: 0, erros: 0 });
+
+  const pendentes = rows.filter((r) => r.dispStatus === "nao_enviado" || r.dispStatus === "falhou");
+
+  async function enviarTodos() {
+    if (pendentes.length === 0) return;
+    setEstado("enviando");
+    setProgresso({ done: 0, total: pendentes.length, erros: 0 });
+
+    let erros = 0;
+    for (let i = 0; i < pendentes.length; i++) {
+      const row = pendentes[i];
+      try {
+        const res = await fetch("/api/disparos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ffId: row.id }),
+        });
+        if (res.ok) {
+          onAtualizar(row.id, {
+            id: "todos-" + Date.now() + i,
+            tipo: "whatsapp",
+            subtipo: "link_inicial",
+            status: "enviado",
+            created_at: new Date().toISOString(),
+            enviado_em: new Date().toISOString(),
+            agendado_para: null,
+          });
+        } else {
+          erros++;
+        }
+      } catch {
+        erros++;
+      }
+      setProgresso({ done: i + 1, total: pendentes.length, erros });
+    }
+
+    setEstado("concluido");
+    setTimeout(() => setEstado("idle"), 5000);
+  }
+
+  if (pendentes.length === 0) return null;
+
+  return (
+    <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: "1px solid #E2E8F0" }}>
+      {estado === "idle" && (
+        <button
+          onClick={enviarTodos}
+          className="flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium transition-opacity hover:opacity-90"
+          style={{ backgroundColor: "#00246D", color: "white" }}
+        >
+          <Send className="w-3.5 h-3.5" />
+          Enviar para todos ({pendentes.length} pendentes)
+        </button>
+      )}
+      {estado === "enviando" && (
+        <div className="flex items-center gap-3">
+          <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#2E60FF" }} />
+          <span className="text-sm" style={{ color: "#334155" }}>
+            Enviando {progresso.done}/{progresso.total}…
+          </span>
+          <div className="h-1.5 w-32 rounded-full overflow-hidden" style={{ backgroundColor: "#E2E8F0" }}>
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${(progresso.done / progresso.total) * 100}%`,
+                backgroundColor: "#2E60FF",
+              }}
+            />
+          </div>
+        </div>
+      )}
+      {estado === "concluido" && (
+        <div className="flex items-center gap-2">
+          <CheckCircle className="w-4 h-4" style={{ color: "#059669" }} />
+          <span className="text-sm" style={{ color: "#059669" }}>
+            {progresso.total - progresso.erros} enviados
+            {progresso.erros > 0 && `, ${progresso.erros} falharam`}
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
-  const [ffs, setFfs]                         = useState<FFRow[]>(initialFfs);
-  const [filtroFat, setFiltroFat]             = useState("todos");
-  const [filtroStatus, setFiltroStatus]       = useState("todos");
-  const [busca, setBusca]                     = useState("");
-  const [cadenciaFf, setCadenciaFf]           = useState<FFRow | null>(null);
+  const [ffs, setFfs]               = useState<FFRow[]>(initialFfs);
+  const [filtroFat, setFiltroFat]   = useState("todos");
+  const [filtroStatus, setFiltroStatus] = useState("todos");
+  const [busca, setBusca]           = useState("");
+  const [cadenciaFf, setCadenciaFf] = useState<FFRow | null>(null);
 
-  // Adiciona disparo localmente (otimistic update)
   function handleAtualizar(ffId: string, disparo: DisparoRecord) {
     setFfs((prev) =>
       prev.map((ff) =>
@@ -414,7 +492,6 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
 
   const rows = useMemo(() => ffs.map(computeRow), [ffs]);
 
-  // KPIs
   const kpi = useMemo(() => ({
     total:      rows.length,
     enviados:   rows.filter((r) => r.dispStatus === "enviado").length,
@@ -424,24 +501,22 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
     falhou:     rows.filter((r) => r.dispStatus === "falhou").length,
   }), [rows]);
 
-  // Faturamentos únicos para o filtro
   const faturamentos = useMemo(() => {
     const map = new Map<string, string>();
     rows.forEach((r) => map.set(r.faturamento.id, r.faturamento.nome_campanha));
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [rows]);
 
-  // Filtragem
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       if (filtroFat !== "todos" && r.faturamento.id !== filtroFat) return false;
       if (filtroStatus !== "todos") {
-        if (filtroStatus === "nao_enviado" && r.dispStatus !== "nao_enviado") return false;
-        if (filtroStatus === "agendado"    && r.dispStatus !== "agendado")    return false;
-        if (filtroStatus === "enviado"     && r.dispStatus !== "enviado")     return false;
-        if (filtroStatus === "falhou"      && r.dispStatus !== "falhou")      return false;
-        if (filtroStatus === "respondeu"   && r.docStatus  !== "respondeu")   return false;
-        if (filtroStatus === "pendente_doc"&& r.docStatus  !== "pendente" && r.docStatus !== "parcial") return false;
+        if (filtroStatus === "nao_enviado"  && r.dispStatus !== "nao_enviado") return false;
+        if (filtroStatus === "agendado"     && r.dispStatus !== "agendado")    return false;
+        if (filtroStatus === "enviado"      && r.dispStatus !== "enviado")     return false;
+        if (filtroStatus === "falhou"       && r.dispStatus !== "falhou")      return false;
+        if (filtroStatus === "respondeu"    && r.docStatus  !== "respondeu")   return false;
+        if (filtroStatus === "pendente_doc" && r.docStatus  !== "pendente" && r.docStatus !== "parcial") return false;
       }
       if (busca) {
         const q = busca.toLowerCase();
@@ -454,14 +529,31 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
     });
   }, [rows, filtroFat, filtroStatus, busca]);
 
+  // Agrupa por tipo
+  const grupos = useMemo(() => {
+    const ORDER = ["midia", "producao"];
+    const map = new Map<string, ComputedRow[]>();
+    filtered.forEach((r) => {
+      const key = r.tipo ?? "outros";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(r);
+    });
+    const sorted: [string, ComputedRow[]][] = [];
+    for (const key of ORDER) {
+      if (map.has(key)) sorted.push([key, map.get(key)!]);
+    }
+    for (const [key, val] of map) {
+      if (!ORDER.includes(key)) sorted.push([key, val]);
+    }
+    return sorted;
+  }, [filtered]);
+
+  const multiGrupo = grupos.length > 1;
+
   return (
     <div>
-      {/* Cadência modal */}
       {cadenciaFf && (
-        <CadenciaModal
-          ff={cadenciaFf}
-          onClose={() => setCadenciaFf(null)}
-        />
+        <CadenciaModal ff={cadenciaFf} onClose={() => setCadenciaFf(null)} />
       )}
 
       {/* KPIs */}
@@ -476,7 +568,6 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        {/* Busca */}
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: "#94A3B8" }} />
           <input
@@ -489,7 +580,6 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
           />
         </div>
 
-        {/* Faturamento */}
         <div className="relative">
           <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: "#94A3B8" }} />
           <select
@@ -505,7 +595,6 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
           </select>
         </div>
 
-        {/* Status */}
         <select
           value={filtroStatus}
           onChange={(e) => setFiltroStatus(e.target.value)}
@@ -536,31 +625,41 @@ export function MonitoramentoClient({ ffs: initialFfs }: { ffs: FFRow[] }) {
           <table className="w-full">
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
-                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>
-                  Fornecedor
-                </th>
-                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>
-                  Campanha
-                </th>
-                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>
-                  Documentos
-                </th>
-                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>
-                  Último disparo
-                </th>
-                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>
-                  Ações
-                </th>
+                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Fornecedor</th>
+                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Campanha</th>
+                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Valor</th>
+                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Documentos</th>
+                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Último disparo</th>
+                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Ações</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => (
-                <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFf} />
+              {grupos.map(([tipo, grupoRows]) => (
+                <>
+                  {multiGrupo && (
+                    <GroupHeader key={`header-${tipo}`} label={tipoLabel(tipo)} count={grupoRows.length} />
+                  )}
+                  {grupoRows.map((row) => (
+                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFf} />
+                  ))}
+                </>
               ))}
             </tbody>
           </table>
+
+          {/* Enviar para todos */}
+          <EnviarParaTodosButton rows={filtered} onAtualizar={handleAtualizar} />
         </div>
       )}
+
+      {/* Legenda de cores */}
+      <div className="flex items-center gap-2 mt-3">
+        <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }} />
+        <span className="text-xs" style={{ color: "#94A3B8" }}>Linha verde = todos os documentos preenchidos</span>
+      </div>
     </div>
   );
 }
+
+// Re-export so CadenciaModal import still works
+export type { DisparoRecord };

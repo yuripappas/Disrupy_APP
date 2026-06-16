@@ -58,6 +58,8 @@ export default async function FaturamentoDetailPage({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ffProducao = fornecedores.filter((f: any) => f.fornecedor?.tipo === "producao" || (f.associado === false && f.tipo_iclips === "producao"));
 
+  const countMidia    = ffMidia.length;
+  const countProducao = ffProducao.length;
   const repasseMidia    = ffMidia.reduce((s: number, f: { valor: number })    => s + (f.valor    ?? 0), 0);
   const repasseProducao = ffProducao.reduce((s: number, f: { valor: number }) => s + (f.valor    ?? 0), 0);
   const honorariosMidia    = ffMidia.reduce((s: number, f: { honorarios: number })    => s + (f.honorarios ?? 0), 0);
@@ -160,6 +162,8 @@ export default async function FaturamentoDetailPage({
         certidoesIniciais={certidoesData ?? []}
         fornecedoresJaAdicionados={fornecedoresJaAdicionados}
         valorCards={{
+          countMidia,
+          countProducao,
           totalRepasse,
           repasseMidia,
           repasseProducao,

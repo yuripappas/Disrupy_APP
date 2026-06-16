@@ -44,6 +44,8 @@ interface Certidao {
 }
 
 interface ValorCards {
+  countMidia: number;
+  countProducao: number;
   totalRepasse: number;
   repasseMidia: number;
   repasseProducao: number;
@@ -99,48 +101,39 @@ function EtapaBanner({
 // ── ValorCards ───────────────────────────────────────────────────────────────
 
 function ValorCardsRow({ v }: { v: ValorCards }) {
-  const hasValues = v.totalRepasse > 0 || v.totalHonorarios > 0 || v.valorCustosInternos > 0;
-  if (!hasValues) return null;
-
   return (
-    <div className="grid grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-5 gap-4 mb-6">
+      {/* Fornecedores Mídia */}
       <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
-        <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Repasse Fornecedores</p>
-        <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(v.totalRepasse)}</p>
-        <div className="mt-1.5 space-y-0.5">
-          {v.repasseProducao > 0 && (
-            <p className="text-xs flex items-center gap-1" style={{ color: "#94A3B8" }}>
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 inline-block" style={{ backgroundColor: "#7C3AED" }} />
-              Produção: {formatCurrency(v.repasseProducao)}
-            </p>
-          )}
-          {v.repasseMidia > 0 && (
-            <p className="text-xs flex items-center gap-1" style={{ color: "#94A3B8" }}>
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 inline-block" style={{ backgroundColor: "#2E60FF" }} />
-              Mídia: {formatCurrency(v.repasseMidia)}
-            </p>
-          )}
-        </div>
+        <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Forn. Mídia</p>
+        <p className="text-2xl font-bold" style={{ color: "#2E60FF" }}>{v.countMidia}</p>
+        {v.repasseMidia > 0 && (
+          <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>{formatCurrency(v.repasseMidia)}</p>
+        )}
       </div>
 
+      {/* Fornecedores Produção */}
       <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
-        <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Honorários Agência</p>
+        <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Forn. Produção</p>
+        <p className="text-2xl font-bold" style={{ color: "#7C3AED" }}>{v.countProducao}</p>
+        {v.repasseProducao > 0 && (
+          <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>{formatCurrency(v.repasseProducao)}</p>
+        )}
+      </div>
+
+      {/* Honorários */}
+      <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
+        <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Honorários</p>
         <p className="text-lg font-bold" style={{ color: "#059669" }}>{formatCurrency(v.totalHonorarios)}</p>
-        <div className="mt-1.5 space-y-0.5">
-          {v.honorariosProducao > 0 && (
-            <p className="text-xs" style={{ color: "#94A3B8" }}>Produção: {formatCurrency(v.honorariosProducao)}</p>
-          )}
-          {v.honorariosMidia > 0 && (
-            <p className="text-xs" style={{ color: "#94A3B8" }}>Mídia: {formatCurrency(v.honorariosMidia)}</p>
-          )}
-        </div>
       </div>
 
+      {/* Custos Internos */}
       <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
         <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Custos Internos</p>
         <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(v.valorCustosInternos)}</p>
       </div>
 
+      {/* Total */}
       <div className="rounded-xl border p-4" style={{ borderColor: "#2E60FF", backgroundColor: "#EEF2FF" }}>
         <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#2E60FF" }}>Total do Cliente</p>
         <p className="text-lg font-bold" style={{ color: "#00246D" }}>{formatCurrency(v.valorTotal)}</p>
@@ -160,7 +153,7 @@ export function FaturamentoPipelineContent({
   const etapaAtual = etapas.find((e) => e.status === "em_andamento");
   const [selectedEtapa, setSelectedEtapa] = useState(etapaAtual?.numero ?? 1);
 
-  // Converte FF[] → FFRow[] para o MonitoramentoClient da Etapa 2
+  // Converte FF[] → FFRow[] para o MonitoramentoClient da Etapa 1
   const ffRows = useMemo((): FFRow[] => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (fornecedores as any[])
@@ -171,6 +164,8 @@ export function FaturamentoPipelineContent({
         id: ff.id,
         link_token: ff.link_token,
         valor_total: ff.valor_total,
+        valor: ff.valor ?? 0,
+        tipo: ff.fornecedor?.tipo ?? ff.tipo_iclips ?? null,
         faturamento: { id: faturamentoId, nome_campanha: nomeCampanha, iclips_job_id: jobId },
         fornecedor: {
           id: ff.fornecedor.id,
@@ -185,8 +180,8 @@ export function FaturamentoPipelineContent({
         disparos: (ff.disparos ?? []).map((d: any) => ({
           id: d.id,
           status: d.status,
-          tipo: "whatsapp",
-          subtipo: "link_inicial" as const,
+          tipo: d.tipo ?? "whatsapp",
+          subtipo: d.subtipo ?? "link_inicial",
           created_at: d.created_at,
           enviado_em: d.enviado_em,
           agendado_para: d.agendado_para,
@@ -201,36 +196,21 @@ export function FaturamentoPipelineContent({
           <div>
             <EtapaBanner
               icon={Send}
-              title="Etapa 1 — Envio para Fornecedores"
-              descricao="Envie os links de documentação para cada fornecedor via WhatsApp. Use 'Enviar para todos' no grupo para agilizar."
+              title="Etapa 1 — Iniciar Faturamento"
+              descricao="Envie os links de documentação para cada fornecedor via WhatsApp. Use 'Enviar para todos' para agilizar. O primeiro envio libera automaticamente a revisão."
             />
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold" style={{ color: "#0F172A" }}>Documentação dos Fornecedores</h2>
-              {isRevisor && (
+            {isRevisor && (
+              <div className="flex justify-end mb-4">
                 <FaturamentoDetailClient
                   faturamentoId={faturamentoId}
                   fornecedoresJaAdicionados={fornecedoresJaAdicionados}
                 />
-              )}
-            </div>
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            <DocumentacaoSection fornecedores={fornecedores as any} custosInternos={custosInternos as any} isRevisor={isRevisor} />
-          </div>
-        );
-
-      case 2:
-        return (
-          <div>
-            <EtapaBanner
-              icon={Eye}
-              title="Etapa 2 — Acompanhar Envios"
-              descricao="Monitore o status dos disparos e documentos recebidos. Reenvie ou ajuste cadências conforme necessário."
-            />
+              </div>
+            )}
             {ffRows.length === 0 ? (
               <div className="rounded-xl border p-12 text-center" style={{ borderColor: "#E2E8F0", borderStyle: "dashed" }}>
                 <p className="text-sm" style={{ color: "#94A3B8" }}>
-                  Nenhum fornecedor elegível para disparo neste faturamento.
-                  Verifique se os fornecedores têm WhatsApp cadastrado.
+                  Nenhum fornecedor elegível. Verifique se os fornecedores têm WhatsApp cadastrado.
                 </p>
               </div>
             ) : (
@@ -239,12 +219,12 @@ export function FaturamentoPipelineContent({
           </div>
         );
 
-      case 3:
+      case 2:
         return (
           <div>
             <EtapaBanner
               icon={BookOpen}
-              title="Etapa 3 — Revisar Documentos"
+              title="Etapa 2 — Revisão de Documentação"
               descricao="Verifique os documentos enviados pelos fornecedores. Aprove o que está correto e reprove com motivo o que precisar de correção."
             />
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
@@ -252,7 +232,7 @@ export function FaturamentoPipelineContent({
           </div>
         );
 
-      case 4:
+      case 3:
         return (
           <Etapa4Section
             faturamentoId={faturamentoId}
@@ -266,26 +246,26 @@ export function FaturamentoPipelineContent({
           />
         );
 
-      case 5:
+      case 4:
         return (
           <div>
             <EtapaBanner
               icon={CheckCircle2}
-              title="Etapa 5 — Revisão Final"
-              descricao="Revisão final antes do fechamento. Confirme que todos os documentos dos fornecedores estão aprovados e corretos."
+              title="Etapa 4 — Revisão do Processo"
+              descricao="Revisão final antes do fechamento. Confirme que todos os documentos dos fornecedores e da agência estão aprovados e corretos."
             />
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
             <DocumentacaoSection fornecedores={fornecedores as any} custosInternos={custosInternos as any} isRevisor={isRevisor} />
           </div>
         );
 
-      case 6:
+      case 5:
         return (
           <div>
             <EtapaBanner
               icon={FileArchive}
-              title="Etapa 6 — Gerar PDF do Processo"
-              descricao="Organize os grupos de documentos e gere o PDF consolidado do processo para envio ao cliente."
+              title="Etapa 5 — Publicação"
+              descricao="Gere o PDF consolidado do processo e publique a documentação para envio ao cliente."
             />
             <div
               className="rounded-xl border p-12 text-center"
@@ -296,6 +276,34 @@ export function FaturamentoPipelineContent({
               <p className="text-xs" style={{ color: "#94A3B8" }}>
                 Em breve: organizar grupos por arrastar, reordenar e gerar PDF consolidado do processo.
               </p>
+            </div>
+          </div>
+        );
+
+      case 6:
+        return (
+          <div>
+            <EtapaBanner
+              icon={Eye}
+              title="Etapa 6 — Aguardando Validação"
+              descricao="Processo publicado. Aguardando validação pelo cliente ou gestor responsável."
+            />
+            <div className="rounded-xl border p-12 text-center" style={{ borderColor: "#E2E8F0", borderStyle: "dashed" }}>
+              <p className="text-sm" style={{ color: "#94A3B8" }}>Em andamento — aguardando resposta.</p>
+            </div>
+          </div>
+        );
+
+      case 7:
+        return (
+          <div>
+            <EtapaBanner
+              icon={CheckCircle2}
+              title="Etapa 7 — Conclusão"
+              descricao="Faturamento concluído. Todos os documentos foram validados e o processo está encerrado."
+            />
+            <div className="rounded-xl border p-12 text-center" style={{ borderColor: "#E2E8F0", borderStyle: "dashed" }}>
+              <p className="text-sm font-medium" style={{ color: "#059669" }}>✓ Processo concluído com sucesso.</p>
             </div>
           </div>
         );

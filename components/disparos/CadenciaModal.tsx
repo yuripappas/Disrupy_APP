@@ -81,6 +81,34 @@ function StatusIcon({ status }: { status: StepStatus }) {
   );
 }
 
+// ── ChannelStatus ─────────────────────────────────────────────────────────────
+
+function ChannelStatus({
+  icon: Icon,
+  label,
+  color,
+  sent,
+  failed,
+  scheduled,
+}: {
+  icon: React.ElementType;
+  label: string;
+  color: string;
+  sent: boolean;
+  failed: boolean;
+  scheduled: boolean;
+}) {
+  const statusColor = sent ? "#16A34A" : failed ? "#DC2626" : scheduled ? "#D97706" : "#CBD5E1";
+  const statusIcon  = sent ? "✓" : failed ? "✗" : scheduled ? "⏰" : "–";
+  return (
+    <div className="flex items-center gap-1">
+      <Icon className="w-3 h-3" style={{ color }} />
+      <span className="text-xs font-medium" style={{ color: statusColor }}>{statusIcon}</span>
+      <span className="text-xs" style={{ color: "#94A3B8" }}>{label}</span>
+    </div>
+  );
+}
+
 // ── StepRow ───────────────────────────────────────────────────────────────────
 
 function StepRow({
@@ -151,21 +179,36 @@ function StepRow({
           <span className="text-sm font-medium" style={{ color: "#0F172A" }}>
             {stepDef.nome}
           </span>
-          <div className="flex items-center gap-1">
-            {stepDef.whatsapp && (
-              <MessageSquare className="w-3 h-3" style={{ color: "#16A34A" }} />
-            )}
-            {stepDef.email && (
-              <Mail className="w-3 h-3" style={{ color: "#2E60FF" }} />
-            )}
-          </div>
           {wasSent && byStep.length > 1 && (
             <span className="text-xs" style={{ color: "#94A3B8" }}>
               ({byStep.filter((d) => d.status === "enviado").length}x enviado)
             </span>
           )}
         </div>
-        <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{subLabel}</p>
+        <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>{subLabel}</p>
+        {/* Status por canal */}
+        <div className="flex items-center gap-3 mt-1.5">
+          {stepDef.whatsapp && (
+            <ChannelStatus
+              icon={MessageSquare}
+              label="WhatsApp"
+              color="#16A34A"
+              sent={byStep.filter(d => d.tipo !== "email" && d.status === "enviado").length > 0}
+              failed={!byStep.some(d => d.tipo !== "email" && d.status === "enviado") && byStep.some(d => d.tipo !== "email" && d.status === "falhou")}
+              scheduled={!byStep.some(d => d.tipo !== "email" && (d.status === "enviado" || d.status === "falhou")) && byStep.some(d => d.tipo !== "email" && d.status === "agendado")}
+            />
+          )}
+          {stepDef.email && (
+            <ChannelStatus
+              icon={Mail}
+              label="Email"
+              color="#2E60FF"
+              sent={byStep.filter(d => d.tipo === "email" && d.status === "enviado").length > 0}
+              failed={!byStep.some(d => d.tipo === "email" && d.status === "enviado") && byStep.some(d => d.tipo === "email" && d.status === "falhou")}
+              scheduled={!byStep.some(d => d.tipo === "email" && (d.status === "enviado" || d.status === "falhou")) && byStep.some(d => d.tipo === "email" && d.status === "agendado")}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

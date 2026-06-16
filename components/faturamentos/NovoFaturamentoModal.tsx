@@ -8,7 +8,6 @@ import { Modal, FormField, Input, Select } from "@/components/ui/Modal";
 
 const ETAPAS_NOMES = [
   "Iniciar Faturamento",
-  "Documentação Fornecedores",
   "Revisão de Documentação",
   "Documentação Agência",
   "Revisão do Processo",

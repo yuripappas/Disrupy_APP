@@ -27,9 +27,9 @@ export default async function DisparosPage() {
   const { data, error } = await admin
     .from("faturamento_fornecedores")
     .select(`
-      id, link_token, valor_total, envio_inicial_em,
+      id, link_token, valor, valor_total, tipo_iclips, envio_inicial_em,
       faturamento:faturamentos ( id, nome_campanha, iclips_job_id ),
-      fornecedor:fornecedores  ( id, razao_social, cnpj, contato_nome, contato_whatsapp ),
+      fornecedor:fornecedores  ( id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp ),
       documentos               ( id, status ),
       disparos                 ( id, tipo, subtipo, status, created_at, enviado_em, agendado_para )
     `)
@@ -46,11 +46,15 @@ export default async function DisparosPage() {
     );
   }
 
-  // Filtra apenas fornecedores com WhatsApp cadastrado
+  // Filtra apenas fornecedores com WhatsApp cadastrado e mapeia tipo
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const elegíveis = ((data ?? []) as any[]).filter(
-    (ff) => ff.fornecedor?.contato_whatsapp,
-  ) as FFRow[];
+  const elegíveis = ((data ?? []) as any[])
+    .filter((ff) => ff.fornecedor?.contato_whatsapp)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((ff: any) => ({
+      ...ff,
+      tipo: ff.fornecedor?.tipo ?? ff.tipo_iclips ?? null,
+    })) as FFRow[];
 
   return (
     <div className="p-8">
