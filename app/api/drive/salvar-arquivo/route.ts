@@ -279,3 +279,65 @@ async function verificarConfirmacao(ffId: string) {
 
   console.log(`[confirmação] Enviada para ff=${ffId} (${forn.razao_social})`);
 }
+
+// ── DELETE /api/drive/salvar-arquivo ──────────────────────────────────────────
+// Remove um arquivo enviado pelo fornecedor (portal ou usuário autenticado).
+// Body: { arquivoId: string; token?: string }
+export async function DELETE(req: NextRequest) {
+  const { arquivoId, token } = await req.json() as { arquivoId: string; token?: string };
+  if (!arquivoId) return NextResponse.json({ error: 'arquivoId obrigatório' }, { status: 400 });
+
+  const serviceUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const admin = createServiceClient(serviceUrl, serviceRole,
+    { auth: { autoRefreshToken: false, persistSession: false } });
+
+  // Busca o arquivo para saber a qual documento pertence
+  const { data: arq, error: arqErr } = await admin
+    .from('documento_arquivos')
+    .select('id, documento_id, documentos ( id, status, faturamento_fornecedor_id )')
+    .eq('id', arquivoId)
+    .single();
+
+  if (arqErr || !arq) return NextResponse.json({ error: 'Arquivo não encontrado' }, { status: 404 });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const doc = (arq as any).documentos;
+
+  // Documento aprovado não pode ser alterado pelo fornecedor
+  if (doc?.status === 'aprovado') {
+    return NextResponse.json({ error: 'Documento já aprovado — não é possível remover arquivos' }, { status: 403 });
+  }
+
+  // Valida token do portal (fornecedor anônimo)
+  if (token) {
+    const { data: ff } = await admin
+      .from('faturamento_fornecedores')
+      .select('id')
+      .eq('link_token', token)
+      .single();
+    if (!ff || doc?.faturamento_fornecedor_id !== ff.id) {
+      return NextResponse.json({ error: 'Token inválido ou arquivo não pertence a este portal' }, { status: 403 });
+    }
+  } else {
+    // Usuário autenticado
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+  }
+
+  // Remove o arquivo do banco
+  await admin.from('documento_arquivos').delete().eq('id', arquivoId);
+
+  // Se não há mais arquivos, volta o documento para "pendente"
+  const { count } = await admin
+    .from('documento_arquivos')
+    .select('id', { count: 'exact', head: true })
+    .eq('documento_id', doc.id);
+
+  if ((count ?? 0) === 0) {
+    await admin.from('documentos').update({ status: 'pendente', arquivo_url: null }).eq('id', doc.id);
+  }
+
+  return NextResponse.json({ ok: true, documentoStatus: (count ?? 0) === 0 ? 'pendente' : doc.status });
+}

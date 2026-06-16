@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import {
   FileText, Upload, CheckCircle, Clock, XCircle,
   ExternalLink, Loader2, AlertTriangle, MessageSquare, X,
-  Film, Image, Archive,
+  Film, Image, Archive, Trash2,
 } from "lucide-react";
 
 // ── PDF text extraction (pdfjs-dist) ──────────────────────────────────────────
@@ -196,6 +196,7 @@ function DocRow({
   fornecedorNome,
   token,
   onUploaded,
+  onDeleted,
 }: {
   doc: Documento;
   ffId: string;
@@ -204,17 +205,38 @@ function DocRow({
   fornecedorNome: string;
   token: string;
   onUploaded: (docId: string, arquivos: Arquivo[]) => void;
+  onDeleted:  (docId: string, arquivoId: string, novoStatus: string) => void;
 }) {
   const inputRef      = useRef<HTMLInputElement>(null);
   const [staged,      setStaged]      = useState<StagedFile[]>([]);
   const [dragging,    setDragging]    = useState(false);
   const [uploading,   setUploading]   = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [deletando,   setDeletando]   = useState<string | null>(null);
 
   const cfg           = docStatusConfig[doc.status] ?? docStatusConfig.pendente;
   const existingFiles = doc.documento_arquivos ?? [];
   const canUpload     = doc.status !== "aprovado";
   const pendingStaged = staged.filter((f) => f.status === "pending");
+
+  async function deletarArquivo(arquivoId: string) {
+    if (!window.confirm("Remover este arquivo?")) return;
+    setDeletando(arquivoId);
+    try {
+      const res = await fetch("/api/drive/salvar-arquivo", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ arquivoId, token }),
+      });
+      const data = await res.json() as { ok?: boolean; documentoStatus?: string; error?: string };
+      if (!res.ok) { setGlobalError(data.error ?? "Erro ao remover arquivo"); return; }
+      onDeleted(doc.id, arquivoId, data.documentoStatus ?? "pendente");
+    } catch {
+      setGlobalError("Erro ao remover arquivo");
+    } finally {
+      setDeletando(null);
+    }
+  }
 
   function addFiles(fileList: FileList | File[]) {
     setGlobalError(null);
@@ -442,6 +464,20 @@ function DocRow({
               >
                 <ExternalLink className="w-3 h-3" /> Abrir
               </a>
+              {canUpload && (
+                <button
+                  type="button"
+                  onClick={() => deletarArquivo(arq.id)}
+                  disabled={deletando === arq.id}
+                  className="p-1 rounded-lg transition-colors hover:bg-red-50 flex-shrink-0"
+                  title="Remover arquivo"
+                >
+                  {deletando === arq.id
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#94A3B8" }} />
+                    : <Trash2  className="w-3.5 h-3.5" style={{ color: "#94A3B8" }} />
+                  }
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -595,6 +631,18 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
     );
   }, []);
 
+  const handleDeleted = useCallback((docId: string, arquivoId: string, novoStatus: string) => {
+    setDocs((prev) =>
+      prev.map((d) =>
+        d.id !== docId ? d : {
+          ...d,
+          status: novoStatus,
+          documento_arquivos: d.documento_arquivos.filter((a) => a.id !== arquivoId),
+        }
+      )
+    );
+  }, []);
+
   const enviados  = docs.filter((d) => d.status === "enviado"  || d.status === "aprovado").length;
   const aprovados = docs.filter((d) => d.status === "aprovado").length;
   const total     = docs.length;
@@ -697,6 +745,7 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
                 fornecedorNome={ff.fornecedor.razao_social}
                 token={token}
                 onUploaded={handleUploaded}
+                onDeleted={handleDeleted}
               />
             ))}
         </div>
