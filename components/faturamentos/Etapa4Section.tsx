@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import {
   Copy, CheckCircle, AlertTriangle, Upload, FileText,
-  Loader2, X, ExternalLink, Trash2,
+  Loader2, X, ExternalLink, Trash2, Plus,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -41,6 +41,15 @@ const TIPOS_CERTIDOES = [
 ];
 
 const LIMITE_GISS = 2000;
+
+// Subpastas no Drive por tipo de documento
+function getSubpasta(tipo: string): string {
+  if (tipo.startsWith("empenho_")) return "EMPENHOS";
+  if (tipo === "proposta")    return "PROPOSTA";
+  if (tipo === "evidencias")  return "EVIDÊNCIAS";
+  if (tipo === "oficio")      return "OFÍCIO";
+  return "CERTIDÕES";
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -181,7 +190,7 @@ function CertidaoSlot({
           clienteNome:  faturamento.clienteNome ?? "SEM_CLIENTE",
           jobId:        faturamento.jobId ?? `FAT`,
           campanha:     faturamento.nomeCampanha ?? "SEM_NOME",
-          subpasta:     "CERTIDÕES",
+          subpasta:     getSubpasta(tipo),
           fornecedorNome: "AGENCIA",
         }),
       });
@@ -309,8 +318,15 @@ export function Etapa4Section({
 }) {
   const [certidoes, setCertidoes] = useState<Certidao[]>(certidoesIniciais);
 
+  // Conta quantos slots de empenho existem (mínimo 1)
+  const [empenhoCount, setEmpenhoCount] = useState(() => {
+    const n = certidoesIniciais.filter((c) => c.tipo.startsWith("empenho_")).length;
+    return Math.max(1, n);
+  });
+
   const handleCertidaoSalva = useCallback((c: Certidao) => {
     setCertidoes((prev) => {
+      // Para tipos únicos substitui; para empenhos apenas adiciona/atualiza pelo id
       const sem = prev.filter((x) => x.tipo !== c.tipo);
       return [...sem, c];
     });
@@ -328,9 +344,14 @@ export function Etapa4Section({
 
   const blocos = bloqueado ? [] : gerarNfseBlocos(fornecedoresNf);
 
-  const totalGeral = fornecedoresNf.reduce((s, f) => s + f.valor, 0);
+  const totalGeral  = fornecedoresNf.reduce((s, f) => s + f.valor, 0);
   const certPorTipo = Object.fromEntries(certidoes.map((c) => [c.tipo, c]));
   const certPendentes = TIPOS_CERTIDOES.filter((t) => !certPorTipo[t.tipo]).length;
+
+  const empenhoTipos = Array.from({ length: empenhoCount }, (_, i) => `empenho_${i}`);
+  const empenhosPendentes = empenhoTipos.filter((t) => !certPorTipo[t]).length;
+
+  const fat = { nomeCampanha, jobId, clienteTipo, clienteNome };
 
   return (
     <div className="mt-6">
@@ -488,13 +509,97 @@ export function Etapa4Section({
                 tipo={tipo}
                 label={label}
                 certidao={certPorTipo[tipo] ?? null}
-                faturamento={{ nomeCampanha, jobId, clienteTipo, clienteNome }}
+                faturamento={fat}
                 onSalva={handleCertidaoSalva}
                 onRemovida={handleCertidaoRemovida}
               />
             ))}
           </div>
         </div>
+
+        {/* ── Empenhos ───────────────────────────────────────────────────────── */}
+        <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#E2E8F0" }}>
+          <div className="px-5 py-3 flex items-center justify-between"
+            style={{ backgroundColor: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
+            <p className="text-xs font-semibold" style={{ color: "#334155" }}>Empenhos</p>
+            {empenhosPendentes > 0 ? (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: "#FFFBEB", color: "#D97706" }}>
+                {empenhosPendentes} pendente{empenhosPendentes > 1 ? "s" : ""}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: "#ECFDF5", color: "#059669" }}>
+                <CheckCircle className="w-3 h-3" /> OK
+              </span>
+            )}
+          </div>
+          <div className="p-4 space-y-2">
+            {empenhoTipos.map((tipo, idx) => (
+              <CertidaoSlot
+                key={tipo}
+                faturamentoId={faturamentoId}
+                tipo={tipo}
+                label={`Empenho ${empenhoCount > 1 ? idx + 1 : ""}`}
+                certidao={certPorTipo[tipo] ?? null}
+                faturamento={fat}
+                onSalva={handleCertidaoSalva}
+                onRemovida={handleCertidaoRemovida}
+              />
+            ))}
+            <button
+              onClick={() => setEmpenhoCount((n) => n + 1)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors hover:bg-slate-50 mt-1"
+              style={{ borderColor: "#E2E8F0", color: "#64748B" }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Adicionar empenho
+            </button>
+          </div>
+        </div>
+
+        {/* ── Proposta, Evidências, Ofício ────────────────────────────────────── */}
+        {(
+          [
+            { tipo: "proposta",   label: "Proposta iClips" + (propostaId ? ` — Proposta ${propostaId}` : "") },
+            { tipo: "evidencias", label: "Evidências (PDF consolidado dos criativos)" },
+            { tipo: "oficio",     label: "Ofício de encaminhamento" },
+          ] as { tipo: string; label: string }[]
+        ).map(({ tipo, label }) => {
+          const ok = !!certPorTipo[tipo];
+          return (
+            <div key={tipo} className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#E2E8F0" }}>
+              <div className="px-5 py-3 flex items-center justify-between"
+                style={{ backgroundColor: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
+                <p className="text-xs font-semibold" style={{ color: "#334155" }}>
+                  {tipo === "proposta" ? "Proposta" : tipo === "evidencias" ? "Evidências" : "Ofício"}
+                </p>
+                {ok ? (
+                  <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: "#ECFDF5", color: "#059669" }}>
+                    <CheckCircle className="w-3 h-3" /> Anexado
+                  </span>
+                ) : (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: "#FFFBEB", color: "#D97706" }}>
+                    Pendente
+                  </span>
+                )}
+              </div>
+              <div className="p-4">
+                <CertidaoSlot
+                  faturamentoId={faturamentoId}
+                  tipo={tipo}
+                  label={label}
+                  certidao={certPorTipo[tipo] ?? null}
+                  faturamento={fat}
+                  onSalva={handleCertidaoSalva}
+                  onRemovida={handleCertidaoRemovida}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

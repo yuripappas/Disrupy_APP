@@ -19,6 +19,8 @@ interface Props {
   faturamentoId: string;
   etapas: Etapa[];
   isRevisor: boolean;
+  selectedEtapaNum?: number | null;
+  onSelectEtapa?: (num: number) => void;
 }
 
 const STATUS_STYLE: Record<EtapaStatus, { ring: string; bg: string; text: string }> = {
@@ -28,7 +30,7 @@ const STATUS_STYLE: Record<EtapaStatus, { ring: string; bg: string; text: string
   pendente:        { ring: '#E2E8F0', bg: 'white',   text: '#94A3B8' },
 };
 
-export function PipelineSection({ faturamentoId, etapas: etapasInit, isRevisor }: Props) {
+export function PipelineSection({ faturamentoId, etapas: etapasInit, isRevisor, selectedEtapaNum, onSelectEtapa }: Props) {
   const router = useRouter();
   const [etapas, setEtapas]             = useState<Etapa[]>(etapasInit);
   const [loading, setLoading]           = useState(false);
@@ -164,7 +166,13 @@ export function PipelineSection({ faturamentoId, etapas: etapasInit, isRevisor }
       {/* Círculos de etapa */}
       <div className="flex items-start overflow-x-auto pb-2">
         {etapas.map((etapa, i) => (
-          <EtapaCircle key={etapa.id} etapa={etapa} isLast={i === etapas.length - 1} />
+          <EtapaCircle
+            key={etapa.id}
+            etapa={etapa}
+            isLast={i === etapas.length - 1}
+            isSelected={selectedEtapaNum === etapa.numero}
+            onSelect={onSelectEtapa ? () => onSelectEtapa(etapa.numero) : undefined}
+          />
         ))}
       </div>
 
@@ -238,7 +246,14 @@ export function PipelineSection({ faturamentoId, etapas: etapasInit, isRevisor }
 
 // ── EtapaCircle ────────────────────────────────────────────────────────────────
 
-function EtapaCircle({ etapa, isLast }: { etapa: Etapa; isLast: boolean }) {
+function EtapaCircle({
+  etapa, isLast, isSelected, onSelect,
+}: {
+  etapa: Etapa;
+  isLast: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
+}) {
   const style = STATUS_STYLE[etapa.status];
   const icon =
     etapa.status === 'concluida'      ? <Check         className="w-3.5 h-3.5 text-white" /> :
@@ -248,10 +263,19 @@ function EtapaCircle({ etapa, isLast }: { etapa: Etapa; isLast: boolean }) {
 
   return (
     <div className="flex items-center">
-      <div className="flex flex-col items-center">
+      <div
+        className="flex flex-col items-center"
+        onClick={onSelect}
+        style={{ cursor: onSelect ? 'pointer' : 'default' }}
+      >
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold"
-          style={{ borderColor: style.ring, backgroundColor: style.bg, color: style.text }}
+          className="w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold transition-all"
+          style={{
+            borderColor: isSelected && etapa.status === 'pendente' ? '#2E60FF' : style.ring,
+            backgroundColor: style.bg,
+            color: style.text,
+            boxShadow: isSelected ? '0 0 0 3px rgba(46,96,255,0.2)' : undefined,
+          }}
         >
           {etapa.status === 'pendente' ? etapa.numero : icon}
         </div>
@@ -259,11 +283,12 @@ function EtapaCircle({ etapa, isLast }: { etapa: Etapa; isLast: boolean }) {
           className="text-xs text-center mt-1.5 max-w-[70px] leading-tight"
           style={{
             color:
+              isSelected            ? '#2E60FF'  :
               etapa.status === 'em_andamento'   ? '#00246D' :
               etapa.status === 'concluida'       ? '#2E60FF' :
               etapa.status === 'inconformidade'  ? '#EF4444' :
               '#94A3B8',
-            fontWeight: etapa.status === 'em_andamento' ? 600 : 400,
+            fontWeight: isSelected || etapa.status === 'em_andamento' ? 600 : 400,
           }}
         >
           {etapa.nome}
@@ -272,6 +297,9 @@ function EtapaCircle({ etapa, isLast }: { etapa: Etapa; isLast: boolean }) {
           <span className="text-xs mt-0.5 font-medium" style={{ color: '#EF4444' }}>
             ↩ {etapa.retornos}
           </span>
+        )}
+        {isSelected && (
+          <div className="mt-1 h-0.5 w-8 rounded-full" style={{ backgroundColor: '#2E60FF' }} />
         )}
       </div>
       {!isLast && (

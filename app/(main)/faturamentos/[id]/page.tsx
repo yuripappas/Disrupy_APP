@@ -1,16 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  ChevronLeft,
-  AlertTriangle,
-  ChevronRight,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { FaturamentoDetailClient } from "./FaturamentoDetailClient";
-import { DocumentacaoSection } from "@/components/faturamentos/DocumentacaoSection";
-import { PipelineSection } from "@/components/faturamentos/PipelineSection";
-import { Etapa4Section } from "@/components/faturamentos/Etapa4Section";
+import { FaturamentoPipelineContent } from "@/components/faturamentos/FaturamentoPipelineContent";
 
 // ── Visual helpers ──────────────────────────────────────────────────────────
 
@@ -65,38 +58,29 @@ export default async function FaturamentoDetailPage({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ffProducao = fornecedores.filter((f: any) => f.fornecedor?.tipo === "producao" || (f.associado === false && f.tipo_iclips === "producao"));
 
-  // Repasse = valor base do fornecedor (sem honorários) — o que sai para os fornecedores
   const repasseMidia    = ffMidia.reduce((s: number, f: { valor: number })    => s + (f.valor    ?? 0), 0);
   const repasseProducao = ffProducao.reduce((s: number, f: { valor: number }) => s + (f.valor    ?? 0), 0);
-
-  // Honorários = margem da agência sobre fornecedores externos
   const honorariosMidia    = ffMidia.reduce((s: number, f: { honorarios: number })    => s + (f.honorarios ?? 0), 0);
   const honorariosProducao = ffProducao.reduce((s: number, f: { honorarios: number }) => s + (f.honorarios ?? 0), 0);
   const totalHonorarios    = honorariosMidia + honorariosProducao;
-
   const valorCustosInternos = custosInternos.reduce((s: number, c: { valor_total: number }) => s + (c.valor_total ?? 0), 0);
+  const totalRepasse = repasseMidia + repasseProducao;
 
-  // Totais para os cards de resumo
-  const valorMidia    = repasseMidia    + honorariosMidia;
-  const valorProducao = repasseProducao + honorariosProducao;
-  const totalRepasse  = repasseMidia    + repasseProducao;
-
-  // Get fornecedor_ids for the modal (to exclude already-added ones)
+  // Fornecedores JA adicionados (para o modal de adicionar fornecedor)
   const { data: ffIds } = await supabase
     .from("faturamento_fornecedores")
     .select("fornecedor_id")
     .eq("faturamento_id", id);
-
   const fornecedoresJaAdicionados = (ffIds ?? []).map((r: { fornecedor_id: string }) => r.fornecedor_id);
 
+  // Certidões + documentos agência (empenhos, proposta, evidências, ofício)
   const { data: certidoesData } = await supabase
     .from("faturamento_certidoes")
     .select("id, tipo, label, arquivo_url, nome_arquivo, tamanho_bytes")
     .eq("faturamento_id", id)
     .order("created_at");
 
-  // Fornecedores com NF para a discriminação (associados, excluindo não-associados)
-  // Usa f.valor (repasse base, sem honorários) — evita bitributação na NFS-e da agência
+  // Fornecedores com NF para a discriminação GISS
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fornecedoresNf = fornecedores
     .filter((f: any) => f.associado !== false && f.fornecedor)
@@ -107,8 +91,8 @@ export default async function FaturamentoDetailPage({
         ffId:        f.id,
         razaoSocial: f.fornecedor.razao_social,
         cnpj:        f.fornecedor.cnpj,
-        valor:       f.valor ?? 0,           // repasse ao fornecedor (sem honorários)
-        valorNf:     nfDoc.valor_nf ?? null, // valor líquido extraído do PDF
+        valor:       f.valor ?? 0,
+        valorNf:     nfDoc.valor_nf ?? null,
         numeroNf:    nfDoc.numero_nf ?? null,
         nfStatus:    nfDoc.numero_nf_status ?? null,
       }];
@@ -160,93 +144,31 @@ export default async function FaturamentoDetailPage({
         </div>
       </div>
 
-      {/* Pipeline interativo */}
-      <PipelineSection
-        faturamentoId={id}
-        etapas={etapas}
-        isRevisor={isRevisor}
-      />
-
-      {/* Valores resumo — Repasse | Honorários | Custos Internos | Total cliente */}
-      {(valorMidia > 0 || valorProducao > 0 || valorCustosInternos > 0) && (
-        <div className="grid grid-cols-4 gap-4 mb-6">
-
-          {/* Repasse Fornecedores */}
-          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
-            <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Repasse Fornecedores</p>
-            <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(totalRepasse)}</p>
-            <div className="mt-1.5 space-y-0.5">
-              {repasseProducao > 0 && (
-                <p className="text-xs flex items-center gap-1" style={{ color: "#94A3B8" }}>
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#7C3AED", display: "inline-block" }} />
-                  Produção: {formatCurrency(repasseProducao)}
-                </p>
-              )}
-              {repasseMidia > 0 && (
-                <p className="text-xs flex items-center gap-1" style={{ color: "#94A3B8" }}>
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#2E60FF", display: "inline-block" }} />
-                  Mídia: {formatCurrency(repasseMidia)}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Honorários da Agência */}
-          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
-            <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Honorários Agência</p>
-            <p className="text-lg font-bold" style={{ color: "#059669" }}>{formatCurrency(totalHonorarios)}</p>
-            <div className="mt-1.5 space-y-0.5">
-              {honorariosProducao > 0 && (
-                <p className="text-xs" style={{ color: "#94A3B8" }}>Produção: {formatCurrency(honorariosProducao)}</p>
-              )}
-              {honorariosMidia > 0 && (
-                <p className="text-xs" style={{ color: "#94A3B8" }}>Mídia: {formatCurrency(honorariosMidia)}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Custos Internos */}
-          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#E2E8F0" }}>
-            <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#94A3B8" }}>Custos Internos</p>
-            <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(valorCustosInternos)}</p>
-            <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>{custosInternos.length} item(ns) da agência</p>
-          </div>
-
-          {/* Total cobrado do cliente */}
-          <div className="rounded-xl border p-4" style={{ borderColor: "#2E60FF", backgroundColor: "#EEF2FF" }}>
-            <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#2E60FF" }}>Total do Cliente</p>
-            <p className="text-lg font-bold" style={{ color: "#00246D" }}>{formatCurrency(fat.valor_total ?? 0)}</p>
-            <p className="text-xs mt-1" style={{ color: "#2E60FF" }}>
-              repasse + hon. + interno
-            </p>
-          </div>
-
-        </div>
-      )}
-
-      {/* Documentação agrupada — Mídia, Produção, Custos Internos */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold" style={{ color: "#0F172A" }}>Documentação dos Fornecedores</h2>
-          <FaturamentoDetailClient
-            faturamentoId={id}
-            fornecedoresJaAdicionados={fornecedoresJaAdicionados}
-          />
-        </div>
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <DocumentacaoSection fornecedores={fornecedores as any} custosInternos={custosInternos} isRevisor={isRevisor} />
-      </div>
-
-      {/* Etapa 4 — Documentação da Agência */}
-      <Etapa4Section
+      {/* Pipeline + conteúdo contextual por etapa */}
+      <FaturamentoPipelineContent
         faturamentoId={id}
         nomeCampanha={fat.nome_campanha}
         jobId={fat.iclips_job_id ?? null}
         propostaId={fat.iclips_proposta_id ?? null}
         clienteTipo={fat.cliente_tipo}
         clienteNome={fat.cliente_nome}
+        etapas={etapas}
+        isRevisor={isRevisor}
+        fornecedores={fornecedores}
+        custosInternos={custosInternos}
         fornecedoresNf={fornecedoresNf}
         certidoesIniciais={certidoesData ?? []}
+        fornecedoresJaAdicionados={fornecedoresJaAdicionados}
+        valorCards={{
+          totalRepasse,
+          repasseMidia,
+          repasseProducao,
+          honorariosMidia,
+          honorariosProducao,
+          totalHonorarios,
+          valorCustosInternos,
+          valorTotal: fat.valor_total ?? 0,
+        }}
       />
     </div>
   );
