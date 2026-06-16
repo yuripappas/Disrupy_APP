@@ -245,15 +245,27 @@ function Row({
     setEnviando(false);
     if (!res.ok) { setErro(data.error ?? "Erro ao enviar"); return; }
     setEnviado(true);
+    const agora = new Date().toISOString();
     onAtualizar(row.id, {
-      id: data.id ?? "tmp-" + Date.now(),
+      id: data.id ?? "tmp-wa-" + Date.now(),
       tipo: "whatsapp",
       subtipo: "link_inicial",
       status: "enviado",
-      created_at: new Date().toISOString(),
-      enviado_em: new Date().toISOString(),
+      created_at: agora,
+      enviado_em: agora,
       agendado_para: null,
     });
+    if (data.emailEnviado) {
+      onAtualizar(row.id, {
+        id: "tmp-mail-" + Date.now(),
+        tipo: "email",
+        subtipo: "link_inicial",
+        status: "enviado",
+        created_at: agora,
+        enviado_em: agora,
+        agendado_para: null,
+      });
+    }
     setTimeout(() => setEnviado(false), 4000);
   }
 
@@ -482,15 +494,28 @@ function EnviarParaTodosButton({
           body: JSON.stringify({ ffId: row.id }),
         });
         if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const agora = new Date().toISOString();
           onAtualizar(row.id, {
-            id: "todos-" + Date.now() + i,
+            id: "todos-wa-" + Date.now() + i,
             tipo: "whatsapp",
             subtipo: "link_inicial",
             status: "enviado",
-            created_at: new Date().toISOString(),
-            enviado_em: new Date().toISOString(),
+            created_at: agora,
+            enviado_em: agora,
             agendado_para: null,
           });
+          if (data.emailEnviado) {
+            onAtualizar(row.id, {
+              id: "todos-mail-" + Date.now() + i,
+              tipo: "email",
+              subtipo: "link_inicial",
+              status: "enviado",
+              created_at: agora,
+              enviado_em: agora,
+              agendado_para: null,
+            });
+          }
         } else {
           erros++;
         }

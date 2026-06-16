@@ -18,7 +18,6 @@ import { interpolar, buildVars } from '@/lib/cadencia';
 const INSTANCE_NAME = 'disrupy';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://disrupy-app.vercel.app';
 
-// Mensagem padrão (usado se template não estiver configurado)
 function buildMensagem(contatoNome: string | null | undefined, campanha: string, portalUrl: string): string {
   const saudacao = contatoNome ? `Olá, *${contatoNome}*!` : `Olá!`;
   return [
@@ -33,6 +32,18 @@ function buildMensagem(contatoNome: string | null | undefined, campanha: string,
     ``,
     `Em caso de dúvidas, estamos à disposição. Obrigado! 🙏`,
   ].join('\n');
+}
+
+function buildEmailHtml(contatoNome: string | null | undefined, campanha: string, portalUrl: string): string {
+  const nome = contatoNome ? contatoNome : 'prezado(a)';
+  return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:32px">
+<div style="max-width:560px;margin:0 auto;background:white;border-radius:12px;padding:32px;border:1px solid #e2e8f0">
+  <p style="font-size:18px;font-weight:700;color:#0f172a;margin:0 0 8px">Documentação pendente</p>
+  <p style="color:#334155;margin:0 0 16px">Olá, <strong>${nome}</strong>!</p>
+  <p style="color:#334155;margin:0 0 24px">Você foi solicitado(a) a enviar a documentação para a campanha <strong>${campanha}</strong>.</p>
+  <a href="${portalUrl}" style="display:inline-block;background:#2e60ff;color:white;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:14px">Acessar portal de documentação</a>
+  <p style="color:#94a3b8;font-size:12px;margin:24px 0 0">Em caso de dúvidas, responda este email. — Equipe Disrupy</p>
+</div></body></html>`;
 }
 
 export async function POST(req: NextRequest) {
@@ -108,15 +119,19 @@ export async function POST(req: NextRequest) {
       ? interpolar(tmplData.mensagem_whatsapp, vars)
       : buildMensagem(contatoNome, campanha, portalUrl);
 
-  const enviarEmail =
-    !!emailDest && tmplData?.ativo && tmplData?.canal_email &&
-    !!tmplData?.corpo_email && !!tmplData?.assunto_email;
-  const emailHtml    = enviarEmail ? interpolar(tmplData!.corpo_email!, vars)    : '';
-  const emailAssunto = enviarEmail ? interpolar(tmplData!.assunto_email!, vars)  : '';
+  // Envia email se fornecedor tem email — usa template se configurado, senão usa fallback HTML
+  const enviarEmail = !!emailDest;
+  const emailHtml = (tmplData?.ativo && tmplData?.canal_email && tmplData?.corpo_email)
+    ? interpolar(tmplData.corpo_email, vars)
+    : buildEmailHtml(contatoNome, campanha, portalUrl);
+  const emailAssunto = (tmplData?.ativo && tmplData?.canal_email && tmplData?.assunto_email)
+    ? interpolar(tmplData.assunto_email, vars)
+    : `[Disrupy] Documentação pendente — ${campanha}`;
 
   // ── Agendamento ────────────────────────────────────────────────────────────
   if (agendadoPara) {
-    const inserts = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inserts: any[] = [];
     if (whatsapp) {
       inserts.push(admin.from('disparos').insert({
         faturamento_fornecedor_id: ffId,
@@ -231,7 +246,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, agendado: false, numero: whatsapp });
+  return NextResponse.json({ ok: true, agendado: false, numero: whatsapp, emailEnviado: mailOk });
 }
 
 // GET /api/disparos?ffId=xxx → histórico de disparos de um ff

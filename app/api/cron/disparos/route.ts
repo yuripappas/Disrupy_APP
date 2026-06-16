@@ -166,20 +166,27 @@ export async function GET(req: NextRequest) {
     for (const lembrete of LEMBRETES) {
       if (dias < lembrete.dias) continue; // Ainda não chegou o dia
 
-      // Verifica se já foi enviado este step (qualquer canal)
-      const jaEnviado = disp.some(
-        (d: { subtipo: string; status: string }) =>
-          d.subtipo === lembrete.step && d.status === 'enviado',
-      );
-      if (jaEnviado) continue;
-
       const tmpl = tmplMap.get(lembrete.step);
       if (!tmpl || !tmpl.ativo) continue;
 
+      // Verifica por canal se já foi enviado (independentes)
+      const waJaEnviado = disp.some(
+        (d: { subtipo: string; status: string; tipo: string }) =>
+          d.subtipo === lembrete.step && d.tipo !== 'email' && d.status === 'enviado',
+      );
+      const mailJaEnviado = disp.some(
+        (d: { subtipo: string; status: string; tipo: string }) =>
+          d.subtipo === lembrete.step && d.tipo === 'email' && d.status === 'enviado',
+      );
+      // Pula se todos os canais configurados já foram enviados
+      const waOk   = !tmpl.canal_whatsapp || waJaEnviado;
+      const mailOk = !tmpl.canal_email    || mailJaEnviado;
+      if (waOk && mailOk) continue;
+
       const agora2 = new Date().toISOString();
 
-      // Envia WhatsApp se configurado
-      if (tmpl.canal_whatsapp && forn.contato_whatsapp && tmpl.mensagem_whatsapp) {
+      // Envia WhatsApp se configurado e ainda não enviado
+      if (tmpl.canal_whatsapp && !waJaEnviado && forn.contato_whatsapp && tmpl.mensagem_whatsapp) {
         const msg = interpolar(tmpl.mensagem_whatsapp, vars);
         try {
           if (!whatsappConectado) throw new Error('WhatsApp desconectado');
@@ -210,8 +217,8 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Envia Email se configurado
-      if (tmpl.canal_email && forn.contato_email && tmpl.corpo_email && tmpl.assunto_email) {
+      // Envia Email se configurado e ainda não enviado
+      if (tmpl.canal_email && !mailJaEnviado && forn.contato_email && tmpl.corpo_email && tmpl.assunto_email) {
         const html    = interpolar(tmpl.corpo_email,   vars);
         const subject = interpolar(tmpl.assunto_email, vars);
         try {
