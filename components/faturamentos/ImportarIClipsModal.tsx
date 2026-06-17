@@ -13,6 +13,18 @@ import {
   type IClipsProposta, type OrcamentoGrupo, type MidiaGrupo,
 } from "@/lib/iclips/parser";
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// "Produto/Serviço" do iClips tem formato "PRODUTO - Formato - NOME_PEÇA - TRANSFERÊNCIA DIGITAL"
+// O sufixo "TRANSFERÊNCIA DIGITAL" é o canal de mídia, não o produto — deve ser ignorado.
+function produtoTitulo(descricao: string): string {
+  const IGNORAR = ["TRANSFERÊNCIA DIGITAL", "TRANSFERENCIA DIGITAL"];
+  const partes = descricao.split(" - ").map((p) => p.trim());
+  const relevantes = partes.filter((p) => !IGNORAR.includes(p.toUpperCase()));
+  const lista = relevantes.length > 0 ? relevantes : partes;
+  return lista[lista.length - 1];
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DOCS_MIDIA = [
@@ -582,7 +594,7 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
                     {proposta.custos_internos.map((ci, i) => (
                       <tr key={i} style={{ borderBottom: "1px solid #F1F5F9" }}>
                         <td className="px-4 py-2" style={{ color: "#334155" }}>
-                          <p className="font-medium">{ci.descricao.split(" - ").pop()}</p>
+                          <p className="font-medium">{produtoTitulo(ci.descricao)}</p>
                           <p className="text-xs" style={{ color: "#94A3B8" }}>{ci.servico.substring(0, 80)}</p>
                         </td>
                         <td className="px-4 py-2 text-right" style={{ color: "#64748B" }}>{ci.qtde}</td>
