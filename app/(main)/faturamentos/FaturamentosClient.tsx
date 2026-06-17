@@ -101,10 +101,7 @@ export function FaturamentosClient({ faturamentos, isGestor }: { faturamentos: F
             <FileText className="w-8 h-8" style={{ color: "#2E60FF" }} />
           </div>
           <p className="text-lg font-semibold mb-1" style={{ color: "#0F172A" }}>Nenhum faturamento ainda</p>
-          <p className="text-sm mb-6" style={{ color: "#64748B" }}>Crie o primeiro faturamento para começar.</p>
-          <button onClick={() => setModalOpen(true)} className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#2E60FF" }}>
-            + Novo Faturamento
-          </button>
+          <p className="text-sm" style={{ color: "#64748B" }}>Crie o primeiro faturamento para começar.</p>
         </div>
       ) : (
         <div className="space-y-3">
