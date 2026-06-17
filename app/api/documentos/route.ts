@@ -68,10 +68,14 @@ export async function PATCH(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Dispara notificação de divergência em background (não bloqueia resposta)
+  // Dispara notificações em background (não bloqueia resposta)
   if (acao === "reprovar") {
     void dispararDivergencia(documentoId).catch((e) =>
       console.error("[documentos] Erro ao disparar divergência:", e),
+    );
+  } else if (acao === "aprovar") {
+    void dispararConfirmacaoSeCompleto(documentoId).catch((e) =>
+      console.error("[documentos] Erro ao verificar confirmação:", e),
     );
   }
 
@@ -164,5 +168,104 @@ async function dispararDivergencia(documentoId: string) {
         erro: res.ok ? null : res.error,
       });
     } catch (e) { console.error("[divergência email]", e); }
+  }
+}
+
+// ── Notificação de confirmação (todos os documentos aprovados) ────────────────
+
+async function dispararConfirmacaoSeCompleto(documentoId: string) {
+  const admin = createAdmin(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+
+  // Busca o ff_id do documento aprovado
+  const { data: doc } = await admin
+    .from("documentos")
+    .select("faturamento_fornecedor_id")
+    .eq("id", documentoId)
+    .single();
+
+  if (!doc) return;
+
+  // Verifica se todos os documentos do ff estão aprovados
+  const { data: todos } = await admin
+    .from("documentos")
+    .select("status")
+    .eq("faturamento_fornecedor_id", doc.faturamento_fornecedor_id);
+
+  if (!todos?.length || !todos.every((d) => d.status === "aprovado")) return;
+
+  // Busca template de confirmação
+  const { data: tmpl } = await admin
+    .from("cadencia_templates")
+    .select("ativo, canal_whatsapp, canal_email, mensagem_whatsapp, assunto_email, corpo_email")
+    .eq("step", "confirmacao")
+    .single();
+
+  if (!tmpl?.ativo) return;
+
+  // Busca dados do ff/fornecedor
+  const { data: ff } = await admin
+    .from("faturamento_fornecedores")
+    .select(`
+      id, link_token,
+      faturamento:faturamentos ( nome_campanha ),
+      fornecedor:fornecedores ( razao_social, contato_nome, contato_whatsapp, contato_email )
+    `)
+    .eq("id", doc.faturamento_fornecedor_id)
+    .single();
+
+  if (!ff?.link_token) return;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const forn = (ff.fornecedor as any) ?? {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fat  = (ff.faturamento as any) ?? {};
+  const portalUrl = `${APP_URL}/portal/${ff.link_token}`;
+
+  const vars = buildVars({
+    contatoNome:  forn.contato_nome,
+    razaoSocial:  forn.razao_social ?? "",
+    nomeCampanha: fat.nome_campanha ?? "",
+    portalUrl,
+  });
+
+  const agora = new Date().toISOString();
+
+  // WhatsApp
+  if (tmpl.canal_whatsapp && forn.contato_whatsapp && tmpl.mensagem_whatsapp) {
+    const msg = interpolar(tmpl.mensagem_whatsapp, vars);
+    try {
+      const estado = await estadoConexao(INSTANCE_NAME);
+      if (estado === "open") {
+        await enviarMensagem(INSTANCE_NAME, forn.contato_whatsapp, msg);
+        await admin.from("disparos").insert({
+          faturamento_fornecedor_id: ff.id,
+          tipo: "whatsapp", subtipo: "confirmacao",
+          numero_destino: forn.contato_whatsapp,
+          mensagem: msg, status: "enviado", enviado_em: agora,
+        });
+      }
+    } catch (e) { console.error("[confirmação WA]", e); }
+  }
+
+  // Email
+  if (tmpl.canal_email && forn.contato_email && tmpl.corpo_email && tmpl.assunto_email) {
+    const html    = interpolar(tmpl.corpo_email,   vars);
+    const subject = interpolar(tmpl.assunto_email, vars);
+    try {
+      const res = await sendEmail({ to: forn.contato_email, subject, html });
+      await admin.from("disparos").insert({
+        faturamento_fornecedor_id: ff.id,
+        tipo: "email", subtipo: "confirmacao",
+        email_destino: forn.contato_email,
+        assunto: subject, mensagem: html,
+        status: res.ok ? "enviado" : "falhou",
+        enviado_em: res.ok ? agora : null,
+        erro: res.ok ? null : res.error,
+      });
+    } catch (e) { console.error("[confirmação email]", e); }
   }
 }
