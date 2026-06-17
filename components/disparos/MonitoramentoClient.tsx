@@ -201,17 +201,17 @@ function UltimoDisparoCel({ row }: { row: ComputedRow }) {
   return (
     <div className="space-y-1.5">
       {stageLabel ? (
-        <p className="text-xs font-semibold" style={{ color: "#0F172A" }}>{stageLabel}</p>
+        <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+          style={{ color: "#2E60FF", backgroundColor: "#EEF2FF" }}>
+          <GitBranch className="w-3 h-3" />{stageLabel}
+        </span>
       ) : (
         <DispStatusBadge />
       )}
       {row.ultimoDisparo && (
-        <>
-          {stageLabel && <DispStatusBadge />}
-          <p className="text-xs" style={{ color: "#94A3B8" }}>
-            {formatDt(row.ultimoDisparo.enviado_em ?? row.ultimoDisparo.agendado_para ?? row.ultimoDisparo.created_at)}
-          </p>
-        </>
+        <p className="text-xs" style={{ color: "#94A3B8" }}>
+          {formatDt(row.ultimoDisparo.enviado_em ?? row.ultimoDisparo.agendado_para ?? row.ultimoDisparo.created_at)}
+        </p>
       )}
       {/* Canais */}
       <div className="flex items-center gap-2">
