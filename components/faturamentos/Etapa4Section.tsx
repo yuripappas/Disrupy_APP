@@ -124,7 +124,7 @@ function buildGissBlocos(
     let text = `CAMPANHA: ${nomeCampanha.toUpperCase()}${parteStr}`;
     if (empenho)    text += `\nEMPENHO: ${empenho}`;
     if (propostaId) text += `\nPROPOSTA No ${propostaId}`;
-    text += `\nCUSTOS INTERNOS (CRIAÇÃO) - ${formatCurrency(valorCustosInternos)}`;
+    if (valorCustosInternos > 0) text += `\nCUSTOS INTERNOS (CRIAÇÃO) - ${formatCurrency(valorCustosInternos)}`;
 
     const prodInBlock = indices.filter(i => i < prodCount);
     const midInBlock  = indices.filter(i => i >= prodCount);
