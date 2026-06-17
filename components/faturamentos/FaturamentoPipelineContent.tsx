@@ -2,11 +2,12 @@
 
 import { useState, useMemo } from "react";
 import {
-  Send, Eye, BookOpen, CheckCircle2, FileArchive, FileStack,
+  Send, BookOpen, CheckCircle2, FileArchive, FileStack,
 } from "lucide-react";
 import { PipelineSection } from "@/components/faturamentos/PipelineSection";
 import { DocumentacaoSection } from "@/components/faturamentos/DocumentacaoSection";
 import { Etapa4Section } from "@/components/faturamentos/Etapa4Section";
+import { RevisaoProcessoSection } from "@/components/faturamentos/RevisaoProcessoSection";
 import { MonitoramentoClient, FFRow } from "@/components/disparos/MonitoramentoClient";
 import { FaturamentoDetailClient } from "@/app/(main)/faturamentos/[id]/FaturamentoDetailClient";
 import { formatCurrency } from "@/lib/utils";
@@ -223,7 +224,7 @@ export function FaturamentoPipelineContent({
           <div>
             <EtapaBanner
               icon={BookOpen}
-              title="Etapa 2 — Revisão de Documentação"
+              title="Etapa 2 — Documentação Fornecedores"
               descricao="Verifique os documentos enviados pelos fornecedores. Aprove o que está correto e reprove com motivo o que precisar de correção."
             />
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
@@ -250,16 +251,13 @@ export function FaturamentoPipelineContent({
 
       case 4:
         return (
-          <div>
-            <EtapaBanner
-              icon={CheckCircle2}
-              title="Etapa 4 — Revisão do Processo"
-              descricao="Revisão final antes do fechamento. Confirme que todos os documentos dos fornecedores e da agência estão aprovados e corretos."
-            />
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            <DocumentacaoSection fornecedores={fornecedores as any} custosInternos={custosInternos as any} isRevisor={isRevisor}
-              faturamentoInfo={{ clienteTipo, clienteNome, jobId, nomeCampanha }} />
-          </div>
+          <RevisaoProcessoSection
+            faturamentoId={faturamentoId}
+            certidoesIniciais={certidoesIniciais}
+            fornecedores={fornecedores}
+            custosInternos={custosInternos}
+            fornecedoresNf={fornecedoresNf}
+          />
         );
 
       case 5:
@@ -277,7 +275,7 @@ export function FaturamentoPipelineContent({
               <FileStack className="w-10 h-10 mx-auto mb-3" style={{ color: "#CBD5E1" }} />
               <p className="text-sm font-medium mb-1" style={{ color: "#334155" }}>Geração de PDF em desenvolvimento</p>
               <p className="text-xs" style={{ color: "#94A3B8" }}>
-                Em breve: organizar grupos por arrastar, reordenar e gerar PDF consolidado do processo.
+                Em breve: gerar PDF consolidado do processo com a ordem definida na etapa anterior.
               </p>
             </div>
           </div>
@@ -287,22 +285,8 @@ export function FaturamentoPipelineContent({
         return (
           <div>
             <EtapaBanner
-              icon={Eye}
-              title="Etapa 6 — Aguardando Validação"
-              descricao="Processo publicado. Aguardando validação pelo cliente ou gestor responsável."
-            />
-            <div className="rounded-xl border p-12 text-center" style={{ borderColor: "#E2E8F0", borderStyle: "dashed" }}>
-              <p className="text-sm" style={{ color: "#94A3B8" }}>Em andamento — aguardando resposta.</p>
-            </div>
-          </div>
-        );
-
-      case 7:
-        return (
-          <div>
-            <EtapaBanner
               icon={CheckCircle2}
-              title="Etapa 7 — Conclusão"
+              title="Etapa 6 — Concluído"
               descricao="Faturamento concluído. Todos os documentos foram validados e o processo está encerrado."
             />
             <div className="rounded-xl border p-12 text-center" style={{ borderColor: "#E2E8F0", borderStyle: "dashed" }}>

@@ -7,13 +7,12 @@ import { createClient } from "@/lib/supabase/client";
 import { Modal, FormField, Input, Select } from "@/components/ui/Modal";
 
 const ETAPAS_NOMES = [
-  "Iniciar Faturamento",
-  "Revisão de Documentação",
+  "Enviar Faturamento",
+  "Documentação Fornecedores",
   "Documentação Agência",
   "Revisão do Processo",
   "Publicação",
-  "Aguardando Validação",
-  "Conclusão",
+  "Concluído",
 ];
 
 type Cliente = {

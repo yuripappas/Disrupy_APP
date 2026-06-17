@@ -41,9 +41,12 @@ const DOCS_PRODUCAO = [
   { tipo: "orcamento_3", label: "Orçamento 3" },
 ];
 const ETAPAS_NOMES = [
-  "Iniciar Faturamento", "Documentação Fornecedores", "Revisão de Documentação",
-  "Documentação Agência", "Revisão do Processo", "Publicação",
-  "Aguardando Validação", "Conclusão",
+  "Enviar Faturamento",
+  "Documentação Fornecedores",
+  "Documentação Agência",
+  "Revisão do Processo",
+  "Publicação",
+  "Concluído",
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
