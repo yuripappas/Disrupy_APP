@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   ChevronDown, ChevronUp, FileText, ExternalLink,
   CheckCircle, XCircle, Clock, Check, X, Loader2,
   Copy, Link2, AlertTriangle, Search, Film, Send, Calendar,
-  Users, UserPlus, Phone, Mail, User, MessageSquare, ArrowUpRight,
+  Users, UserPlus, Phone, Mail, User, MessageSquare, ArrowUpRight, Upload,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeName } from "@/lib/iclips/parser";
@@ -73,9 +73,17 @@ type FF = {
   nome_iclips: string | null;
   associado: boolean | null;
   tipo_iclips: string | null;
+  orcamentos_internos_habilitado?: boolean;
   fornecedor: FornecedorEmbed | null;
   documentos: Documento[];
   disparos: Disparo[];
+};
+
+type FaturamentoInfo = {
+  clienteTipo: string;
+  clienteNome: string;
+  jobId: string | null;
+  nomeCampanha: string;
 };
 
 type CustoInterno = {
@@ -122,6 +130,156 @@ function minDatetimeLocal(): string {
   const d = new Date(Date.now() + 5 * 60 * 1000);
   d.setSeconds(0, 0);
   return d.toISOString().slice(0, 16);
+}
+
+// ── fileToBase64 ──────────────────────────────────────────────────────────────
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── InternalOrcUploadSlot ─────────────────────────────────────────────────────
+// Upload interno de orçamento 2 ou 3 (visível na Etapa 2 quando o fornecedor
+// não está habilitado para preencher todos os 3 via portal).
+
+function InternalOrcUploadSlot({
+  doc,
+  label,
+  fornecedor,
+  faturamentoInfo,
+  onUploaded,
+}: {
+  doc: Documento;
+  label: string;
+  fornecedor: FornecedorEmbed;
+  faturamentoInfo: FaturamentoInfo;
+  onUploaded: (docId: string, arquivoUrl: string) => void;
+}) {
+  const inputRef    = useRef<HTMLInputElement>(null);
+  const [file,      setFile]      = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [erro,      setErro]      = useState<string | null>(null);
+
+  const canUpload = doc.status !== "aprovado";
+  const statusCfg: Record<string, { label: string; color: string; bg: string }> = {
+    pendente:  { label: "Pendente",  color: "#94A3B8", bg: "#F1F5F9" },
+    enviado:   { label: "Enviado",   color: "#059669", bg: "#ECFDF5" },
+    aprovado:  { label: "Aprovado",  color: "#059669", bg: "#ECFDF5" },
+    reprovado: { label: "Reprovado", color: "#DC2626", bg: "#FEF2F2" },
+  };
+  const cfg = statusCfg[doc.status] ?? statusCfg.pendente;
+
+  async function handleUpload() {
+    if (!file) return;
+    setUploading(true);
+    setErro(null);
+    try {
+      const scriptUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL;
+      if (!scriptUrl) throw new Error("Serviço de upload não configurado.");
+
+      const fileContent = await fileToBase64(file);
+      const subpasta    = fornecedor.tipo === "midia" ? "PI" : fornecedor.tipo === "producao" ? "OS" : "CUSTO INTERNO";
+      const prefixo     = doc.tipo === "orcamento_2" ? "OC2" : "OC3";
+      const nomeArquivo = `${prefixo}_${file.name}`;
+
+      const driveRes = await fetch(scriptUrl, {
+        method:  "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          fileName:       nomeArquivo,
+          fileContent,
+          mimeType:       file.type || "application/octet-stream",
+          ano:            new Date().getFullYear(),
+          clienteGrupo:   faturamentoInfo.clienteTipo === "governo_al" ? "GOVERNO DE ALAGOAS" : "",
+          clienteNome:    faturamentoInfo.clienteNome  ?? "SEM_CLIENTE",
+          jobId:          faturamentoInfo.jobId        ?? `FF-${doc.id.slice(0, 6)}`,
+          campanha:       faturamentoInfo.nomeCampanha ?? "SEM_NOME",
+          subpasta,
+          fornecedorNome: fornecedor.razao_social,
+        }),
+      });
+
+      const driveData = await driveRes.json() as { ok: boolean; viewUrl?: string; error?: string };
+      if (!driveData.ok || !driveData.viewUrl) throw new Error(driveData.error ?? "Falha no upload");
+
+      const saveRes = await fetch("/api/drive/salvar-arquivo", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentoId: doc.id, viewUrl: driveData.viewUrl, fileName: nomeArquivo, fileSize: file.size }),
+      });
+      if (!saveRes.ok) {
+        const err = await saveRes.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? "Erro ao salvar arquivo");
+      }
+
+      onUploaded(doc.id, driveData.viewUrl);
+      setFile(null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha no upload");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border p-3 bg-white" style={{ borderColor: "#E2E8F0" }}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold" style={{ color: "#334155" }}>{label}</span>
+        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+          style={{ color: cfg.color, backgroundColor: cfg.bg }}>
+          {cfg.label}
+        </span>
+      </div>
+      {(doc.documento_arquivos?.length ?? 0) > 0 ? (
+        <div className="mb-2 space-y-0.5">
+          {doc.documento_arquivos.map((arq) => (
+            <a key={arq.id} href={arq.arquivo_url} target="_blank" rel="noreferrer"
+              className="flex items-center gap-1 text-xs hover:underline" style={{ color: "#2E60FF" }}>
+              <ExternalLink className="w-3 h-3" />
+              <span className="truncate max-w-[200px]">{arq.nome_arquivo}</span>
+            </a>
+          ))}
+        </div>
+      ) : doc.arquivo_url ? (
+        <a href={doc.arquivo_url} target="_blank" rel="noreferrer"
+          className="flex items-center gap-1 text-xs mb-2 hover:underline" style={{ color: "#2E60FF" }}>
+          <ExternalLink className="w-3 h-3" /> Abrir arquivo
+        </a>
+      ) : null}
+      {canUpload && (
+        <div className="space-y-1.5">
+          <input ref={inputRef} type="file" className="hidden"
+            onChange={(e) => { if (e.target.files?.[0]) { setFile(e.target.files[0]); setErro(null); } e.target.value = ""; }} />
+          {file ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs flex-1 truncate" style={{ color: "#334155" }}>{file.name}</span>
+              <button onClick={handleUpload} disabled={uploading}
+                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-medium text-white flex-shrink-0"
+                style={{ backgroundColor: uploading ? "#94A3B8" : "#2E60FF" }}>
+                {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                {uploading ? "…" : "Enviar"}
+              </button>
+              {!uploading && (
+                <button onClick={() => setFile(null)} className="text-xs flex-shrink-0" style={{ color: "#94A3B8" }}>✕</button>
+              )}
+            </div>
+          ) : (
+            <button onClick={() => inputRef.current?.click()}
+              className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border-2 border-dashed text-xs"
+              style={{ borderColor: "#CBD5E1", color: "#64748B" }}>
+              <Upload className="w-3.5 h-3.5" /> Selecionar arquivo
+            </button>
+          )}
+          {erro && <p className="text-xs" style={{ color: "#DC2626" }}>⚠ {erro}</p>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── DocRow ───────────────────────────────────────────────────────────────────
@@ -334,12 +492,14 @@ function DocRow({
 // ── FornecedorCard ───────────────────────────────────────────────────────────
 
 function FornecedorCard({
-  ff, isRevisor, onDocAction, onNfAtualizado,
+  ff, isRevisor, faturamentoInfo, onDocAction, onNfAtualizado, onOrcUploaded,
 }: {
   ff: FF;
   isRevisor: boolean;
+  faturamentoInfo: FaturamentoInfo | null;
   onDocAction: (ffId: string, docId: string, acao: "aprovar" | "reprovar", motivo?: string) => Promise<void>;
   onNfAtualizado: (ffId: string, docId: string, numeroNf: string) => void;
+  onOrcUploaded: (ffId: string, docId: string, arquivoUrl: string) => void;
 }) {
   const [copied, setCopied]           = useState(false);
   const [enviando, setEnviando]       = useState(false);
@@ -477,6 +637,40 @@ function FornecedorCard({
               onNfAtualizado={(docId, nf) => onNfAtualizado(ff.id, docId, nf)} />
           ))}
       </div>
+
+      {/* Orçamentos internos — agência preenche 2 e 3 quando toggle está OFF */}
+      {!ff.orcamentos_internos_habilitado &&
+        faturamentoInfo &&
+        ff.fornecedor &&
+        ff.documentos.some((d) => d.tipo === "orcamento_2" || d.tipo === "orcamento_3") && (
+          <div className="px-5 py-4" style={{ borderTop: "1px solid #E2E8F0", backgroundColor: "#F8FAFC" }}>
+            <p className="text-xs font-semibold mb-3" style={{ color: "#334155" }}>
+              Orçamentos Internos (preenchimento pela agência)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {ff.documentos.filter((d) => d.tipo === "orcamento_2").map((doc) => (
+                <InternalOrcUploadSlot
+                  key={doc.id}
+                  doc={doc}
+                  label="Orçamento 2"
+                  fornecedor={ff.fornecedor!}
+                  faturamentoInfo={faturamentoInfo}
+                  onUploaded={(docId, url) => onOrcUploaded(ff.id, docId, url)}
+                />
+              ))}
+              {ff.documentos.filter((d) => d.tipo === "orcamento_3").map((doc) => (
+                <InternalOrcUploadSlot
+                  key={doc.id}
+                  doc={doc}
+                  label="Orçamento 3"
+                  fornecedor={ff.fornecedor!}
+                  faturamentoInfo={faturamentoInfo}
+                  onUploaded={(docId, url) => onOrcUploaded(ff.id, docId, url)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
       {/* Footer */}
       <div className="px-5 py-3 space-y-2" style={{ backgroundColor: "#F8FAFC" }}>
@@ -1086,13 +1280,26 @@ export function DocumentacaoSection({
   fornecedores,
   custosInternos,
   isRevisor,
+  faturamentoInfo = null,
 }: {
   fornecedores: FF[];
   custosInternos: CustoInterno[];
   isRevisor: boolean;
+  faturamentoInfo?: FaturamentoInfo | null;
 }) {
   const [ffs, setFFs] = useState<FF[]>(fornecedores);
   const [loteModal, setLoteModal] = useState<{ titulo: string; ffs: FF[] } | null>(null);
+
+  const handleOrcUploaded = useCallback((ffId: string, docId: string, arquivoUrl: string) => {
+    setFFs((prev) => prev.map((ff) =>
+      ff.id !== ffId ? ff : {
+        ...ff,
+        documentos: ff.documentos.map((d) =>
+          d.id !== docId ? d : { ...d, status: "enviado", arquivo_url: arquivoUrl }
+        ),
+      }
+    ));
+  }, []);
 
   const handleDocAction = useCallback(async (
     ffId: string, docId: string, acao: "aprovar" | "reprovar", motivo?: string,
@@ -1271,7 +1478,7 @@ export function DocumentacaoSection({
             isFfPending(ff) ? (
               <PendingFornecedorCard key={ff.id} ff={ff} onAssociated={handleAssociated} />
             ) : (
-              <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} onDocAction={handleDocAction} onNfAtualizado={handleNfAtualizado} />
+              <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} faturamentoInfo={faturamentoInfo} onDocAction={handleDocAction} onNfAtualizado={handleNfAtualizado} onOrcUploaded={handleOrcUploaded} />
             )
           )}
         </GroupSection>
@@ -1291,7 +1498,7 @@ export function DocumentacaoSection({
             isFfPending(ff) ? (
               <PendingFornecedorCard key={ff.id} ff={ff} onAssociated={handleAssociated} />
             ) : (
-              <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} onDocAction={handleDocAction} onNfAtualizado={handleNfAtualizado} />
+              <FornecedorCard key={ff.id} ff={ff} isRevisor={isRevisor} faturamentoInfo={faturamentoInfo} onDocAction={handleDocAction} onNfAtualizado={handleNfAtualizado} onOrcUploaded={handleOrcUploaded} />
             )
           )}
         </GroupSection>

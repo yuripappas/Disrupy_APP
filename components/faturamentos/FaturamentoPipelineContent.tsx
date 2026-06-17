@@ -219,7 +219,8 @@ export function FaturamentoPipelineContent({
               descricao="Verifique os documentos enviados pelos fornecedores. Aprove o que está correto e reprove com motivo o que precisar de correção."
             />
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            <DocumentacaoSection fornecedores={fornecedores as any} custosInternos={custosInternos as any} isRevisor={isRevisor} />
+            <DocumentacaoSection fornecedores={fornecedores as any} custosInternos={custosInternos as any} isRevisor={isRevisor}
+              faturamentoInfo={{ clienteTipo, clienteNome, jobId, nomeCampanha }} />
           </div>
         );
 
@@ -248,7 +249,8 @@ export function FaturamentoPipelineContent({
               descricao="Revisão final antes do fechamento. Confirme que todos os documentos dos fornecedores e da agência estão aprovados e corretos."
             />
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            <DocumentacaoSection fornecedores={fornecedores as any} custosInternos={custosInternos as any} isRevisor={isRevisor} />
+            <DocumentacaoSection fornecedores={fornecedores as any} custosInternos={custosInternos as any} isRevisor={isRevisor}
+              faturamentoInfo={{ clienteTipo, clienteNome, jobId, nomeCampanha }} />
           </div>
         );
 

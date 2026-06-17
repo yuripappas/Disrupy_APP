@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Send, Clock, CheckCircle, XCircle, Calendar, Search,
   Loader2, MessageSquare, Phone, Mail, Filter, ExternalLink, GitBranch,
-  Users, Trash2, Lock, Upload, FileText,
+  Users, Trash2, FileText,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { CadenciaModal } from "./CadenciaModal";
@@ -243,173 +243,20 @@ function UltimoDisparoCel({ row }: { row: ComputedRow }) {
   );
 }
 
-// ── fileToBase64 ──────────────────────────────────────────────────────────────
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-// ── InternalUploadSlot ────────────────────────────────────────────────────────
-
-function InternalUploadSlot({
-  doc,
-  label,
-  row,
-  onUploaded,
-}: {
-  doc: DocumentoRecord;
-  label: string;
-  row: ComputedRow;
-  onUploaded: (docId: string, arquivoUrl: string) => void;
-}) {
-  const inputRef   = useRef<HTMLInputElement>(null);
-  const [file,     setFile]     = useState<File | null>(null);
-  const [uploading,setUploading]= useState(false);
-  const [erro,     setErro]     = useState<string | null>(null);
-
-  const canUpload = doc.status !== "aprovado";
-
-  const statusCfg: Record<string, { label: string; color: string; bg: string }> = {
-    pendente:  { label: "Pendente",  color: "#94A3B8", bg: "#F1F5F9" },
-    enviado:   { label: "Enviado",   color: "#059669", bg: "#ECFDF5" },
-    aprovado:  { label: "Aprovado",  color: "#059669", bg: "#ECFDF5" },
-    reprovado: { label: "Reprovado", color: "#DC2626", bg: "#FEF2F2" },
-  };
-  const cfg = statusCfg[doc.status] ?? statusCfg.pendente;
-
-  async function handleUpload() {
-    if (!file) return;
-    setUploading(true);
-    setErro(null);
-    try {
-      const scriptUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL;
-      if (!scriptUrl) throw new Error("Serviço de upload não configurado.");
-
-      const fileContent  = await fileToBase64(file);
-      const subpasta     = row.tipo === "midia" ? "PI" : row.tipo === "producao" ? "OS" : "CUSTO INTERNO";
-      const ano          = new Date().getFullYear();
-      const prefixo      = doc.tipo === "orcamento_2" ? "OC2" : "OC3";
-      const nomeArquivo  = `${prefixo}_${file.name}`;
-
-      const driveRes = await fetch(scriptUrl, {
-        method:  "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({
-          fileName:      nomeArquivo,
-          fileContent,
-          mimeType:      file.type || "application/octet-stream",
-          ano,
-          clienteGrupo:  row.faturamento.cliente_tipo === "governo_al" ? "GOVERNO DE ALAGOAS" : "",
-          clienteNome:   row.faturamento.cliente_nome  ?? "SEM_CLIENTE",
-          jobId:         row.faturamento.iclips_job_id ?? `FF-${row.id.slice(0, 6)}`,
-          campanha:      row.faturamento.nome_campanha  ?? "SEM_NOME",
-          subpasta,
-          fornecedorNome: row.fornecedor.razao_social,
-        }),
-      });
-
-      const driveData = await driveRes.json() as { ok: boolean; viewUrl?: string; error?: string };
-      if (!driveData.ok || !driveData.viewUrl) throw new Error(driveData.error ?? "Falha no upload");
-
-      const saveRes = await fetch("/api/drive/salvar-arquivo", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentoId: doc.id, viewUrl: driveData.viewUrl, fileName: nomeArquivo, fileSize: file.size }),
-      });
-      if (!saveRes.ok) {
-        const err = await saveRes.json().catch(() => ({})) as { error?: string };
-        throw new Error(err.error ?? "Erro ao salvar arquivo");
-      }
-
-      onUploaded(doc.id, driveData.viewUrl);
-      setFile(null);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha no upload");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div className="rounded-lg border p-3 bg-white" style={{ borderColor: "#E2E8F0" }}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold" style={{ color: "#334155" }}>{label}</span>
-        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-          style={{ color: cfg.color, backgroundColor: cfg.bg }}>
-          {cfg.label}
-        </span>
-      </div>
-
-      {doc.arquivo_url && (
-        <a href={doc.arquivo_url} target="_blank" rel="noreferrer"
-          className="flex items-center gap-1 text-xs mb-2 hover:underline"
-          style={{ color: "#2E60FF" }}>
-          <ExternalLink className="w-3 h-3" /> Abrir arquivo
-        </a>
-      )}
-
-      {canUpload && (
-        <div className="space-y-1.5">
-          <input
-            ref={inputRef}
-            type="file"
-            className="hidden"
-            onChange={(e) => { if (e.target.files?.[0]) { setFile(e.target.files[0]); setErro(null); } e.target.value = ""; }}
-          />
-          {file ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs flex-1 truncate" style={{ color: "#334155" }}>{file.name}</span>
-              <button
-                onClick={handleUpload}
-                disabled={uploading}
-                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-medium text-white flex-shrink-0"
-                style={{ backgroundColor: uploading ? "#94A3B8" : "#2E60FF" }}
-              >
-                {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                {uploading ? "…" : "Enviar"}
-              </button>
-              {!uploading && (
-                <button onClick={() => setFile(null)} className="text-xs flex-shrink-0" style={{ color: "#94A3B8" }}>✕</button>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={() => inputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border-2 border-dashed text-xs transition-colors"
-              style={{ borderColor: "#CBD5E1", color: "#64748B" }}
-            >
-              <Upload className="w-3.5 h-3.5" /> Selecionar arquivo
-            </button>
-          )}
-          {erro && <p className="text-xs" style={{ color: "#DC2626" }}>⚠ {erro}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── OrcamentosPanel ───────────────────────────────────────────────────────────
+// Etapa 1: apenas seleciona se o fornecedor preenche 1 ou 3 orçamentos.
+// Upload interno fica na Etapa 2 (DocumentacaoSection).
 
 function OrcamentosPanel({
   row,
   onToggle,
-  onDocUploaded,
 }: {
   row: ComputedRow;
   onToggle: (ffId: string, enabled: boolean) => void;
-  onDocUploaded: (ffId: string, docId: string, arquivoUrl: string) => void;
 }) {
   const [toggling, setToggling] = useState(false);
   const [erro,     setErro]     = useState<string | null>(null);
-
-  const orcamento2 = (row.documentos ?? []).find((d) => d.tipo === "orcamento_2") ?? null;
-  const orcamento3 = (row.documentos ?? []).find((d) => d.tipo === "orcamento_3") ?? null;
-  const enabled    = row.orcamentos_internos_habilitado ?? false;
+  const enabled = row.orcamentos_internos_habilitado ?? false;
 
   async function handleToggle() {
     const newVal = !enabled;
@@ -435,31 +282,32 @@ function OrcamentosPanel({
   }
 
   return (
-    <tr style={{ borderBottom: "1px solid #E2E8F0", backgroundColor: "#F0F4FF" }}>
-      <td colSpan={6} className="px-5 py-4">
-        {/* Cabeçalho */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 flex-shrink-0" style={{ color: "#2E60FF" }} />
-            <span className="text-sm font-semibold" style={{ color: "#1E40AF" }}>
-              Orçamentos Internos
-            </span>
-            <span className="text-xs px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>
-              Orç. 2 e 3
-            </span>
+    <tr style={{ borderBottom: "1px solid #E2E8F0", backgroundColor: "#F8FAFC" }}>
+      <td colSpan={6} className="px-5 py-3">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold" style={{ color: "#334155" }}>
+              Orçamentos pelo portal do fornecedor
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
+              {enabled
+                ? "Fornecedor preenche os 3 orçamentos no link. Nenhum upload interno necessário na Etapa 2."
+                : "Fornecedor preenche só o Orçamento 1. Os demais (2 e 3) são preenchidos internamente na Etapa 2."}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {erro && <span className="text-xs" style={{ color: "#DC2626" }}>{erro}</span>}
-            <span className="text-xs" style={{ color: "#64748B" }}>
-              {enabled ? "Habilitado" : "Desabilitado"}
+            <span className="text-xs font-medium" style={{ color: enabled ? "#2E60FF" : "#94A3B8" }}>
+              {enabled ? "3 orçamentos" : "Só Orç. 1"}
             </span>
             <button
               onClick={handleToggle}
               disabled={toggling}
               className="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors"
               style={{ backgroundColor: enabled ? "#2E60FF" : "#CBD5E1" }}
-              title={enabled ? "Desabilitar orçamentos internos" : "Habilitar orçamentos internos"}
+              title={enabled
+                ? "Fornecedor preenche os 3 orçamentos no portal"
+                : "Fornecedor preenche só o Orçamento 1"}
             >
               {toggling
                 ? <Loader2 className="absolute left-1 w-3 h-3 animate-spin text-white" />
@@ -471,37 +319,6 @@ function OrcamentosPanel({
             </button>
           </div>
         </div>
-
-        {/* Conteúdo */}
-        {!enabled ? (
-          <p className="text-xs" style={{ color: "#64748B" }}>
-            Habilite para permitir o preenchimento interno dos orçamentos 2 e 3.
-            O fornecedor não tem acesso a esses slots.
-          </p>
-        ) : !orcamento2 && !orcamento3 ? (
-          <p className="text-xs" style={{ color: "#94A3B8" }}>
-            Nenhum slot de orçamento interno encontrado para este fornecedor.
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {orcamento2 && (
-              <InternalUploadSlot
-                doc={orcamento2}
-                label="Orçamento 2"
-                row={row}
-                onUploaded={(docId, url) => onDocUploaded(row.id, docId, url)}
-              />
-            )}
-            {orcamento3 && (
-              <InternalUploadSlot
-                doc={orcamento3}
-                label="Orçamento 3"
-                row={row}
-                onUploaded={(docId, url) => onDocUploaded(row.id, docId, url)}
-              />
-            )}
-          </div>
-        )}
       </td>
     </tr>
   );
@@ -515,14 +332,12 @@ function Row({
   onCadencia,
   onRemover,
   onToggle,
-  onDocUploaded,
 }: {
   row: ComputedRow;
   onAtualizar: (ffId: string, disparo: DisparoRecord) => void;
   onCadencia: (ffId: string) => void;
   onRemover?: (ffId: string) => void;
   onToggle: (ffId: string, enabled: boolean) => void;
-  onDocUploaded: (ffId: string, docId: string, arquivoUrl: string) => void;
 }) {
   const [enviando, setEnviando]       = useState(false);
   const [agendando, setAgendando]     = useState(false);
@@ -534,15 +349,11 @@ function Row({
   const [confirmDel, setConfirmDel]   = useState(false);
   const [excluindo, setExcluindo]     = useState(false);
 
-  const hasOrcDocs = (row.documentos ?? []).some(
+  const hasOrcDocs  = (row.documentos ?? []).some(
     (d) => d.tipo === "orcamento_2" || d.tipo === "orcamento_3",
   );
-  const orcEnabled = row.orcamentos_internos_habilitado ?? false;
-  const orcDocs    = (row.documentos ?? []).filter(
-    (d) => d.tipo === "orcamento_2" || d.tipo === "orcamento_3",
-  );
-  const orcAllFilled = orcDocs.length > 0 && orcDocs.every((d) => d.status !== "pendente");
-  const orcDotColor  = !orcEnabled ? "#CBD5E1" : orcAllFilled ? "#059669" : "#D97706";
+  const orcEnabled  = row.orcamentos_internos_habilitado ?? false;
+  const orcDotColor = orcEnabled ? "#2E60FF" : "#CBD5E1";
 
   async function excluir() {
     setExcluindo(true);
@@ -780,9 +591,9 @@ function Row({
         </td>
       </tr>
 
-      {/* Painel de orçamentos internos */}
+      {/* Painel de orçamentos (toggle por fornecedor) */}
       {mostrarOrc && (
-        <OrcamentosPanel row={row} onToggle={onToggle} onDocUploaded={onDocUploaded} />
+        <OrcamentosPanel row={row} onToggle={onToggle} />
       )}
 
       {/* Agendamento inline */}
@@ -1009,18 +820,6 @@ export function MonitoramentoClient({
     );
   }
 
-  function handleDocUploaded(ffId: string, docId: string, arquivoUrl: string) {
-    setFfs((prev) =>
-      prev.map((ff) =>
-        ff.id !== ffId ? ff : {
-          ...ff,
-          documentos: ff.documentos.map((d) =>
-            d.id !== docId ? d : { ...d, status: "enviado", arquivo_url: arquivoUrl },
-          ),
-        },
-      ),
-    );
-  }
 
   const rows = useMemo(() => ffs.map(computeRow), [ffs]);
 
@@ -1177,7 +976,7 @@ export function MonitoramentoClient({
                     <GroupHeader key={`header-${tipo}`} label={tipoLabel(tipo)} count={grupoRows.length} />
                   )}
                   {grupoRows.map((row) => (
-                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} onToggle={handleToggle} onDocUploaded={handleDocUploaded} />
+                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} onToggle={handleToggle} />
                   ))}
                 </>
               ))}

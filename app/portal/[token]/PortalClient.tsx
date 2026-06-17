@@ -181,6 +181,7 @@ type FF = {
   status: string;
   prazo_dias: number;
   valor_total: number;
+  orcamentos_internos_habilitado: boolean;
   fornecedor: { razao_social: string; cnpj: string | null; tipo: string; contato_nome: string | null };
   faturamento: FaturamentoInfo;
   documentos: Documento[];
@@ -683,8 +684,10 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
     );
   }, []);
 
-  // Exclui orçamentos internos (2 e 3) da contagem de progresso do fornecedor
-  const supplierDocs = docs.filter((d) => d.tipo !== "orcamento_2" && d.tipo !== "orcamento_3");
+  // Quando o fornecedor preenche só o Orçamento 1, exclui 2 e 3 da contagem de progresso
+  const supplierDocs = ff.orcamentos_internos_habilitado
+    ? docs
+    : docs.filter((d) => d.tipo !== "orcamento_2" && d.tipo !== "orcamento_3");
   const enviados  = supplierDocs.filter((d) => d.status === "enviado"  || d.status === "aprovado").length;
   const aprovados = supplierDocs.filter((d) => d.status === "aprovado").length;
   const total     = supplierDocs.length;
@@ -778,7 +781,8 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
               return (order[a.status as keyof typeof order] ?? 1) - (order[b.status as keyof typeof order] ?? 1);
             })
             .map((doc) =>
-              doc.tipo === "orcamento_2" || doc.tipo === "orcamento_3" ? (
+              // Quando toggle OFF: fornecedor só preenche orçamento 1 — 2 e 3 são bloqueados
+              !ff.orcamentos_internos_habilitado && (doc.tipo === "orcamento_2" || doc.tipo === "orcamento_3") ? (
                 <LockedDocCard key={doc.id} doc={doc} />
               ) : (
                 <DocRow
