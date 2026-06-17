@@ -239,15 +239,35 @@ function DocRow({
     }
   }
 
+  // Limite de 35 MB: base64 infla o arquivo em ~33%, e o Apps Script
+  // rejeita payloads acima de ~50 MB antes mesmo de executar o código.
+  const MAX_FILE_BYTES = 35 * 1024 * 1024;
+
   function addFiles(fileList: FileList | File[]) {
     setGlobalError(null);
     setStaged((prev) => [
       ...prev,
-      ...Array.from(fileList).map((f) => ({
-        localId: Math.random().toString(36).slice(2),
-        file:    f,
-        status:  "pending" as const,
-      })),
+      ...Array.from(fileList).map((f) => {
+        if (f.size > MAX_FILE_BYTES) {
+          const isVideo = ["mp4", "mov", "avi", "mkv", "webm"].includes(
+            f.name.split(".").pop()?.toLowerCase() ?? ""
+          );
+          const dica = isVideo
+            ? "Compacte o vídeo (ex: HandBrake, qualidade média) ou suba em partes menores."
+            : "Reduza o tamanho do arquivo ou divida em partes.";
+          return {
+            localId:  Math.random().toString(36).slice(2),
+            file:     f,
+            status:   "error" as const,
+            errorMsg: `Arquivo muito grande (${(f.size / 1024 / 1024).toFixed(0)} MB — máx 35 MB). ${dica}`,
+          };
+        }
+        return {
+          localId: Math.random().toString(36).slice(2),
+          file:    f,
+          status:  "pending" as const,
+        };
+      }),
     ]);
   }
 
@@ -525,7 +545,7 @@ function DocRow({
                 : "Toque aqui ou arraste os arquivos"}
             </p>
             <p className="text-xs" style={{ color: "#CBD5E1" }}>
-              PDF, foto, vídeo, ZIP e outros formatos
+              PDF, foto, vídeo, ZIP e outros formatos · máx 35 MB por arquivo
             </p>
           </label>
 
@@ -554,23 +574,24 @@ function DocRow({
                   ) : (
                     fileIcon(sf.file.name)
                   )}
-                  <span
-                    className="text-xs truncate flex-1"
-                    style={{ color: sf.status === "error" ? "#991B1B" : "#334155" }}
-                  >
-                    {sf.file.name}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs truncate" style={{ color: sf.status === "error" ? "#991B1B" : "#334155" }}>
+                        {sf.file.name}
+                      </span>
+                      <span className="text-xs flex-shrink-0" style={{ color: "#94A3B8" }}>
+                        {formatBytes(sf.file.size)}
+                      </span>
+                    </div>
                     {sf.errorMsg && (
-                      <span style={{ color: "#DC2626" }}> · {sf.errorMsg}</span>
+                      <p className="text-xs mt-0.5" style={{ color: "#DC2626" }}>{sf.errorMsg}</p>
                     )}
-                  </span>
-                  <span className="text-xs flex-shrink-0" style={{ color: "#94A3B8" }}>
-                    {formatBytes(sf.file.size)}
-                  </span>
-                  {sf.status === "pending" && !uploading && (
+                  </div>
+                  {(sf.status === "pending" || sf.status === "error") && !uploading && (
                     <button
                       type="button"
                       onClick={() => removeStaged(sf.localId)}
-                      className="p-0.5 rounded hover:bg-slate-200 transition-colors"
+                      className="p-0.5 rounded hover:bg-slate-200 transition-colors flex-shrink-0"
                     >
                       <X className="w-3.5 h-3.5" style={{ color: "#94A3B8" }} />
                     </button>
