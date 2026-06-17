@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Send, Clock, CheckCircle, XCircle, Calendar, Search,
   Loader2, MessageSquare, Phone, Mail, Filter, ExternalLink, GitBranch,
-  Users, Trash2, FileText, Edit2,
+  Users, Trash2, FileText, Edit2, AlertTriangle,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { CadenciaModal } from "./CadenciaModal";
@@ -47,7 +47,7 @@ export type FFRow = {
   };
   fornecedor:  {
     id: string; razao_social: string; cnpj: string;
-    contato_nome: string | null; contato_whatsapp: string;
+    contato_nome: string | null; contato_whatsapp: string | null;
     contato_email?: string | null; telefone?: string | null;
   };
   documentos:  DocumentoRecord[];
@@ -334,6 +334,7 @@ function Row({
   onRemover,
   onToggle,
   onOsPiChange,
+  onContatoChange,
 }: {
   row: ComputedRow;
   onAtualizar: (ffId: string, disparo: DisparoRecord) => void;
@@ -341,24 +342,38 @@ function Row({
   onRemover?: (ffId: string) => void;
   onToggle: (ffId: string, enabled: boolean) => void;
   onOsPiChange: (ffId: string, value: string | null) => void;
+  onContatoChange: (ffId: string, contato: { contato_nome: string | null; contato_whatsapp: string | null; contato_email: string | null }) => void;
 }) {
-  const [enviando, setEnviando]       = useState(false);
-  const [agendando, setAgendando]     = useState(false);
-  const [mostrarAg, setMostrarAg]     = useState(false);
-  const [mostrarOrc, setMostrarOrc]   = useState(false);
-  const [dataAg, setDataAg]           = useState("");
-  const [erro, setErro]               = useState<string | null>(null);
-  const [enviado, setEnviado]         = useState(false);
-  const [confirmDel, setConfirmDel]   = useState(false);
-  const [excluindo, setExcluindo]     = useState(false);
-  const [osPiLocal, setOsPiLocal]     = useState<string | null>(row.numero_os_pi ?? null);
+  const [enviando, setEnviando]         = useState(false);
+  const [agendando, setAgendando]       = useState(false);
+  const [mostrarAg, setMostrarAg]       = useState(false);
+  const [mostrarOrc, setMostrarOrc]     = useState(false);
+  const [dataAg, setDataAg]             = useState("");
+  const [erro, setErro]                 = useState<string | null>(null);
+  const [enviado, setEnviado]           = useState(false);
+  const [confirmDel, setConfirmDel]     = useState(false);
+  const [excluindo, setExcluindo]       = useState(false);
+  const [osPiLocal, setOsPiLocal]       = useState<string | null>(row.numero_os_pi ?? null);
   const [editandoOsPi, setEditandoOsPi] = useState(false);
-  const [osPiInput, setOsPiInput]     = useState(row.numero_os_pi ?? "");
+  const [osPiInput, setOsPiInput]       = useState(row.numero_os_pi ?? "");
   const [salvandoOsPi, setSalvandoOsPi] = useState(false);
-  const [erroOsPi, setErroOsPi]       = useState<string | null>(null);
+  const [erroOsPi, setErroOsPi]         = useState<string | null>(null);
 
-  const tipoForn   = row.tipo ?? "producao";
-  const osPiLabel  = tipoForn === "midia" ? "PI" : "OS";
+  // Contato local (espelha o dado do fornecedor para update otimista)
+  const [contatoLocal, setContatoLocal] = useState({
+    nome:  row.fornecedor.contato_nome   ?? "",
+    wa:    row.fornecedor.contato_whatsapp ?? "",
+    email: row.fornecedor.contato_email  ?? "",
+  });
+  const [editandoContato, setEditandoContato] = useState(false);
+  const [contatoInput, setContatoInput]       = useState({ nome: "", wa: "", email: "" });
+  const [salvandoContato, setSalvandoContato] = useState(false);
+  const [erroContato, setErroContato]         = useState<string | null>(null);
+
+  const semContato = !contatoLocal.wa && !contatoLocal.email;
+
+  const tipoForn  = row.tipo ?? "producao";
+  const osPiLabel = tipoForn === "midia" ? "PI" : "OS";
 
   async function handleSalvarOsPi() {
     setSalvandoOsPi(true);
@@ -382,6 +397,49 @@ function Row({
       setErroOsPi("Erro ao salvar");
     } finally {
       setSalvandoOsPi(false);
+    }
+  }
+
+  function abrirEdicaoContato() {
+    setContatoInput({ nome: contatoLocal.nome, wa: contatoLocal.wa, email: contatoLocal.email });
+    setErroContato(null);
+    setEditandoContato(true);
+  }
+
+  async function handleSalvarContato() {
+    setSalvandoContato(true);
+    setErroContato(null);
+    try {
+      const res = await fetch(`/api/fornecedores/${row.fornecedor.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contato_nome:      contatoInput.nome.trim()  || null,
+          contato_whatsapp:  contatoInput.wa.trim()    || null,
+          contato_email:     contatoInput.email.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setErroContato(data.error ?? "Erro ao salvar");
+        return;
+      }
+      const novo = {
+        nome:  contatoInput.nome.trim()  || "",
+        wa:    contatoInput.wa.trim()    || "",
+        email: contatoInput.email.trim() || "",
+      };
+      setContatoLocal(novo);
+      onContatoChange(row.id, {
+        contato_nome:      novo.nome  || null,
+        contato_whatsapp:  novo.wa    || null,
+        contato_email:     novo.email || null,
+      });
+      setEditandoContato(false);
+    } catch {
+      setErroContato("Erro ao salvar");
+    } finally {
+      setSalvandoContato(false);
     }
   }
 
@@ -469,29 +527,61 @@ function Row({
         className="transition-colors"
         style={{
           borderBottom: "1px solid #F1F5F9",
-          backgroundColor: isRespondeu ? "#F0FDF4" : undefined,
+          backgroundColor: semContato ? "#FFFBEB" : isRespondeu ? "#F0FDF4" : undefined,
         }}
       >
         {/* Fornecedor */}
         <td className="px-5 py-3.5">
           <p className="text-sm font-medium" style={{ color: "#0F172A" }}>{row.fornecedor.razao_social}</p>
-          {row.fornecedor.contato_nome && (
-            <p className="text-xs mt-0.5" style={{ color: "#334155" }}>{row.fornecedor.contato_nome}</p>
-          )}
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-            <div className="flex items-center gap-1">
-              <Phone className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
-              <span className="text-xs font-mono" style={{ color: "#64748B" }}>{row.fornecedor.contato_whatsapp}</span>
+
+          {/* Alerta: dados de contato faltando */}
+          {semContato && (
+            <div className="flex items-center gap-1 mt-1">
+              <AlertTriangle className="w-3 h-3 flex-shrink-0" style={{ color: "#D97706" }} />
+              <span className="text-xs font-medium" style={{ color: "#D97706" }}>Dados de contato incompletos</span>
             </div>
-            {row.fornecedor.contato_email && (
-              <div className="flex items-center gap-1">
-                <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
-                <span className="text-xs" style={{ color: "#64748B" }}>{row.fornecedor.contato_email}</span>
+          )}
+
+          {/* Exibição do contato atual */}
+          {!semContato && (
+            <div className="mt-0.5">
+              {contatoLocal.nome && (
+                <p className="text-xs" style={{ color: "#334155" }}>{contatoLocal.nome}</p>
+              )}
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                {contatoLocal.wa && (
+                  <div className="flex items-center gap-1">
+                    <Phone className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                    <span className="text-xs font-mono" style={{ color: "#64748B" }}>{contatoLocal.wa}</span>
+                  </div>
+                )}
+                {contatoLocal.email && (
+                  <div className="flex items-center gap-1">
+                    <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
+                    <span className="text-xs" style={{ color: "#64748B" }}>{contatoLocal.email}</span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* Botão editar / adicionar contato */}
+          <button
+            onClick={abrirEdicaoContato}
+            className="flex items-center gap-1 mt-1 group"
+            title="Editar dados de contato"
+          >
+            <Edit2 className="w-3 h-3" style={{ color: semContato ? "#D97706" : "#CBD5E1" }} />
+            <span
+              className="text-xs"
+              style={{ color: semContato ? "#D97706" : "#94A3B8" }}
+            >
+              {semContato ? "Adicionar contato" : "Editar contato"}
+            </span>
+          </button>
+
           {/* OS / PI inline */}
-          <div className="mt-1.5">
+          <div className="mt-1">
             {editandoOsPi ? (
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-xs font-semibold" style={{ color: "#64748B" }}>{osPiLabel}:</span>
@@ -525,10 +615,7 @@ function Row({
                 title={`Editar número ${osPiLabel}`}
               >
                 <span className="text-xs font-semibold" style={{ color: "#64748B" }}>{osPiLabel}:</span>
-                <span
-                  className="text-xs font-mono"
-                  style={{ color: osPiLocal ? "#0F172A" : "#CBD5E1" }}
-                >
+                <span className="text-xs font-mono" style={{ color: osPiLocal ? "#0F172A" : "#CBD5E1" }}>
                   {osPiLocal ?? "—"}
                 </span>
                 <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "#94A3B8" }} />
@@ -564,36 +651,49 @@ function Row({
 
         {/* Ações */}
         <td className="px-5 py-3.5">
-          <div className="flex items-center gap-1.5">
-            {/* Enviar */}
-            <button
-              onClick={enviarAgora}
-              disabled={enviando}
-              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-medium transition-colors"
-              style={{
-                backgroundColor: enviado ? "#DCFCE7" : "#F0FDF4",
-                color: enviado ? "#16A34A" : "#15803D",
-                opacity: enviando ? 0.6 : 1,
-              }}
-            >
-              {enviando ? <Loader2 className="w-3 h-3 animate-spin" />
-                : enviado ? <CheckCircle className="w-3 h-3" />
-                : <Send className="w-3 h-3" />}
-              {enviando ? "..." : enviado ? "Enviado!" : row.dispStatus === "nao_enviado" ? "Enviar" : "Reenviar"}
-            </button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Enviar — desabilitado sem contato */}
+            {semContato ? (
+              <span
+                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-medium cursor-not-allowed"
+                style={{ backgroundColor: "#F1F5F9", color: "#CBD5E1" }}
+                title="Adicione WhatsApp ou e-mail antes de enviar"
+              >
+                <Send className="w-3 h-3" />
+                Enviar
+              </span>
+            ) : (
+              <button
+                onClick={enviarAgora}
+                disabled={enviando}
+                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-medium transition-colors"
+                style={{
+                  backgroundColor: enviado ? "#DCFCE7" : "#F0FDF4",
+                  color: enviado ? "#16A34A" : "#15803D",
+                  opacity: enviando ? 0.6 : 1,
+                }}
+              >
+                {enviando ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : enviado ? <CheckCircle className="w-3 h-3" />
+                  : <Send className="w-3 h-3" />}
+                {enviando ? "..." : enviado ? "Enviado!" : row.dispStatus === "nao_enviado" ? "Enviar" : "Reenviar"}
+              </button>
+            )}
 
             {/* Agendar */}
-            <button
-              onClick={() => setMostrarAg((v) => !v)}
-              className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors"
-              style={{
-                backgroundColor: mostrarAg ? "#FEF3C7" : "#F1F5F9",
-                color: mostrarAg ? "#D97706" : "#64748B",
-              }}
-            >
-              <Calendar className="w-3 h-3" />
-              Agendar
-            </button>
+            {!semContato && (
+              <button
+                onClick={() => setMostrarAg((v) => !v)}
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors"
+                style={{
+                  backgroundColor: mostrarAg ? "#FEF3C7" : "#F1F5F9",
+                  color: mostrarAg ? "#D97706" : "#64748B",
+                }}
+              >
+                <Calendar className="w-3 h-3" />
+                Agendar
+              </button>
+            )}
 
             {/* Cadência */}
             <button
@@ -677,6 +777,66 @@ function Row({
         <OrcamentosPanel row={row} onToggle={onToggle} />
       )}
 
+      {/* Edição de contato inline */}
+      {editandoContato && (
+        <tr style={{ borderBottom: "1px solid #F1F5F9", backgroundColor: semContato ? "#FFFBEB" : "#F8FAFC" }}>
+          <td colSpan={6} className="px-5 py-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs font-medium" style={{ color: "#64748B" }}>Nome do contato</label>
+                <input
+                  autoFocus
+                  value={contatoInput.nome}
+                  onChange={(e) => setContatoInput((p) => ({ ...p, nome: e.target.value }))}
+                  placeholder="Ex: João Silva"
+                  className="text-xs px-2 py-1.5 rounded-lg border outline-none bg-white w-40"
+                  style={{ borderColor: "#CBD5E1", color: "#0F172A" }}
+                />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs font-medium" style={{ color: "#64748B" }}>WhatsApp</label>
+                <input
+                  value={contatoInput.wa}
+                  onChange={(e) => setContatoInput((p) => ({ ...p, wa: e.target.value }))}
+                  placeholder="5511999999999"
+                  className="text-xs px-2 py-1.5 rounded-lg border outline-none bg-white font-mono w-36"
+                  style={{ borderColor: "#CBD5E1", color: "#0F172A" }}
+                />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs font-medium" style={{ color: "#64748B" }}>E-mail</label>
+                <input
+                  type="email"
+                  value={contatoInput.email}
+                  onChange={(e) => setContatoInput((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="contato@empresa.com"
+                  className="text-xs px-2 py-1.5 rounded-lg border outline-none bg-white w-48"
+                  style={{ borderColor: "#CBD5E1", color: "#0F172A" }}
+                />
+              </div>
+              <div className="flex items-center gap-2 pb-0.5">
+                <button
+                  onClick={handleSalvarContato}
+                  disabled={salvandoContato}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium text-white"
+                  style={{ backgroundColor: salvandoContato ? "#94A3B8" : "#2E60FF" }}
+                >
+                  {salvandoContato ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                  {salvandoContato ? "Salvando..." : "Salvar"}
+                </button>
+                <button
+                  onClick={() => { setEditandoContato(false); setErroContato(null); }}
+                  className="text-xs" style={{ color: "#94A3B8" }}
+                >
+                  Cancelar
+                </button>
+                {erroContato && <span className="text-xs" style={{ color: "#DC2626" }}>⚠ {erroContato}</span>}
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+
       {/* Agendamento inline */}
       {mostrarAg && (
         <tr style={{ borderBottom: "1px solid #F1F5F9", backgroundColor: "#FFFBEB" }}>
@@ -744,7 +904,10 @@ function EnviarParaTodosButton({
   const [estado, setEstado] = useState<"idle" | "enviando" | "concluido">("idle");
   const [progresso, setProgresso] = useState({ done: 0, total: 0, erros: 0 });
 
-  const pendentes = rows.filter((r) => r.dispStatus === "nao_enviado" || r.dispStatus === "falhou");
+  const pendentes = rows.filter((r) =>
+    (r.dispStatus === "nao_enviado" || r.dispStatus === "falhou") &&
+    (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email)
+  );
 
   async function enviarTodos() {
     if (pendentes.length === 0) return;
@@ -909,16 +1072,25 @@ export function MonitoramentoClient({
     );
   }
 
+  function handleContatoChange(ffId: string, contato: { contato_nome: string | null; contato_whatsapp: string | null; contato_email: string | null }) {
+    setFfs((prev) =>
+      prev.map((ff) =>
+        ff.id !== ffId ? ff : { ...ff, fornecedor: { ...ff.fornecedor, ...contato } },
+      ),
+    );
+  }
+
 
   const rows = useMemo(() => ffs.map(computeRow), [ffs]);
 
   const kpi = useMemo(() => ({
-    total:      rows.length,
-    enviados:   rows.filter((r) => r.dispStatus === "enviado").length,
-    responderam:rows.filter((r) => r.docStatus  === "respondeu").length,
-    pendentes:  rows.filter((r) => r.dispStatus === "nao_enviado" || r.dispStatus === "falhou").length,
-    agendados:  rows.filter((r) => r.dispStatus === "agendado").length,
-    falhou:     rows.filter((r) => r.dispStatus === "falhou").length,
+    total:       rows.length,
+    enviados:    rows.filter((r) => r.dispStatus === "enviado").length,
+    responderam: rows.filter((r) => r.docStatus  === "respondeu").length,
+    pendentes:   rows.filter((r) => r.dispStatus === "nao_enviado" || r.dispStatus === "falhou").length,
+    agendados:   rows.filter((r) => r.dispStatus === "agendado").length,
+    falhou:      rows.filter((r) => r.dispStatus === "falhou").length,
+    semContato:  rows.filter((r) => !r.fornecedor.contato_whatsapp && !r.fornecedor.contato_email).length,
   }), [rows]);
 
   const faturamentos = useMemo(() => {
@@ -939,6 +1111,7 @@ export function MonitoramentoClient({
         if (filtroStatus === "pendente_doc" && r.docStatus  !== "pendente" && r.docStatus !== "parcial") return false;
         if (filtroStatus === "reprovado"    && r.rowStatus  !== "reprovado")   return false;
         if (filtroStatus === "concluido"    && r.rowStatus  !== "concluido")   return false;
+        if (filtroStatus === "sem_contato"  && (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email)) return false;
       }
       if (busca) {
         const q = busca.toLowerCase();
@@ -980,13 +1153,16 @@ export function MonitoramentoClient({
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-        <KpiCard label="Elegíveis"   value={kpi.total}       color="#334155" bg="#F8FAFC" />
-        <KpiCard label="Enviados"    value={kpi.enviados}    color="#2E60FF" bg="#EEF2FF" />
-        <KpiCard label="Responderam" value={kpi.responderam} color="#059669" bg="#ECFDF5" />
-        <KpiCard label="Pendentes"   value={kpi.pendentes}   color="#D97706" bg="#FFFBEB" />
-        <KpiCard label="Agendados"   value={kpi.agendados}   color="#7C3AED" bg="#F5F3FF" />
-        <KpiCard label="Falhou"      value={kpi.falhou}      color="#DC2626" bg="#FEF2F2" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 mb-6">
+        <KpiCard label="Total"        value={kpi.total}       color="#334155" bg="#F8FAFC" />
+        <KpiCard label="Enviados"     value={kpi.enviados}    color="#2E60FF" bg="#EEF2FF" />
+        <KpiCard label="Responderam"  value={kpi.responderam} color="#059669" bg="#ECFDF5" />
+        <KpiCard label="Pendentes"    value={kpi.pendentes}   color="#D97706" bg="#FFFBEB" />
+        <KpiCard label="Agendados"    value={kpi.agendados}   color="#7C3AED" bg="#F5F3FF" />
+        <KpiCard label="Falhou"       value={kpi.falhou}      color="#DC2626" bg="#FEF2F2" />
+        {kpi.semContato > 0 && (
+          <KpiCard label="Sem contato" value={kpi.semContato} color="#92400E" bg="#FEF3C7" />
+        )}
       </div>
 
       {/* Filtros */}
@@ -1025,6 +1201,7 @@ export function MonitoramentoClient({
           style={{ borderColor: "#E2E8F0", color: "#334155" }}
         >
           <option value="todos">Todos os status</option>
+          <option value="sem_contato">⚠ Sem contato</option>
           <option value="nao_enviado">Não enviado</option>
           <option value="agendado">Agendado</option>
           <option value="enviado">Enviado</option>
@@ -1065,7 +1242,7 @@ export function MonitoramentoClient({
                     <GroupHeader key={`header-${tipo}`} label={tipoLabel(tipo)} count={grupoRows.length} />
                   )}
                   {grupoRows.map((row) => (
-                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} onToggle={handleToggle} onOsPiChange={handleOsPiChange} />
+                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} onToggle={handleToggle} onOsPiChange={handleOsPiChange} onContatoChange={handleContatoChange} />
                   ))}
                 </>
               ))}

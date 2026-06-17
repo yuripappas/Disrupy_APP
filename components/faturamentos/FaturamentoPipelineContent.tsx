@@ -162,7 +162,7 @@ export function FaturamentoPipelineContent({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (fornecedores as any[])
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((ff: any) => ff.associado !== false && ff.fornecedor?.contato_whatsapp && ff.link_token)
+      .filter((ff: any) => ff.associado !== false && ff.link_token)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map((ff: any): FFRow => ({
         id: ff.id,
@@ -185,7 +185,7 @@ export function FaturamentoPipelineContent({
           razao_social: ff.fornecedor.razao_social,
           cnpj: ff.fornecedor.cnpj,
           contato_nome: ff.fornecedor.contato_nome,
-          contato_whatsapp: ff.fornecedor.contato_whatsapp,
+          contato_whatsapp: ff.fornecedor.contato_whatsapp ?? null,
           contato_email: ff.fornecedor.contato_email ?? null,
           telefone: ff.fornecedor.telefone ?? null,
         },
