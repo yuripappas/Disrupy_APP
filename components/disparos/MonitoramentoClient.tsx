@@ -382,11 +382,6 @@ function Row({
           <UltimoDisparoCel row={row} />
         </td>
 
-        {/* Status */}
-        <td className="px-5 py-3.5">
-          <RowStatusBadge status={row.rowStatus} />
-        </td>
-
         {/* Ações */}
         <td className="px-5 py-3.5">
           <div className="flex items-center gap-1.5">
@@ -838,7 +833,6 @@ export function MonitoramentoClient({
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Valor</th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Documentos</th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Último disparo</th>
-                <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Status</th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Ações</th>
               </tr>
             </thead>
