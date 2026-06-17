@@ -172,6 +172,7 @@ export function FaturamentoPipelineContent({
         tipo: ff.fornecedor?.tipo ?? ff.tipo_iclips ?? null,
         envio_inicial_em: ff.envio_inicial_em ?? null,
         orcamentos_internos_habilitado: ff.orcamentos_internos_habilitado ?? false,
+        numero_os_pi: ff.numero_os_pi ?? null,
         faturamento: {
           id: faturamentoId,
           nome_campanha: nomeCampanha,

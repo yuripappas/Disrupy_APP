@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Send, Clock, CheckCircle, XCircle, Calendar, Search,
   Loader2, MessageSquare, Phone, Mail, Filter, ExternalLink, GitBranch,
-  Users, Trash2, FileText,
+  Users, Trash2, FileText, Edit2,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { CadenciaModal } from "./CadenciaModal";
@@ -37,6 +37,7 @@ export type FFRow = {
   tipo?: string | null;
   envio_inicial_em?: string | null;
   orcamentos_internos_habilitado?: boolean;
+  numero_os_pi?: string | null;
   faturamento: {
     id: string;
     nome_campanha: string;
@@ -332,12 +333,14 @@ function Row({
   onCadencia,
   onRemover,
   onToggle,
+  onOsPiChange,
 }: {
   row: ComputedRow;
   onAtualizar: (ffId: string, disparo: DisparoRecord) => void;
   onCadencia: (ffId: string) => void;
   onRemover?: (ffId: string) => void;
   onToggle: (ffId: string, enabled: boolean) => void;
+  onOsPiChange: (ffId: string, value: string | null) => void;
 }) {
   const [enviando, setEnviando]       = useState(false);
   const [agendando, setAgendando]     = useState(false);
@@ -348,6 +351,39 @@ function Row({
   const [enviado, setEnviado]         = useState(false);
   const [confirmDel, setConfirmDel]   = useState(false);
   const [excluindo, setExcluindo]     = useState(false);
+  const [osPiLocal, setOsPiLocal]     = useState<string | null>(row.numero_os_pi ?? null);
+  const [editandoOsPi, setEditandoOsPi] = useState(false);
+  const [osPiInput, setOsPiInput]     = useState(row.numero_os_pi ?? "");
+  const [salvandoOsPi, setSalvandoOsPi] = useState(false);
+  const [erroOsPi, setErroOsPi]       = useState<string | null>(null);
+
+  const tipoForn   = row.tipo ?? "producao";
+  const osPiLabel  = tipoForn === "midia" ? "PI" : "OS";
+
+  async function handleSalvarOsPi() {
+    setSalvandoOsPi(true);
+    setErroOsPi(null);
+    try {
+      const res = await fetch("/api/faturamento-fornecedores", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ffId: row.id, numeroOsPi: osPiInput.trim() || null }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setErroOsPi(data.error ?? "Erro ao salvar");
+        return;
+      }
+      const val = osPiInput.trim() || null;
+      setOsPiLocal(val);
+      onOsPiChange(row.id, val);
+      setEditandoOsPi(false);
+    } catch {
+      setErroOsPi("Erro ao salvar");
+    } finally {
+      setSalvandoOsPi(false);
+    }
+  }
 
   const hasOrcDocs  = (row.documentos ?? []).some(
     (d) => d.tipo === "orcamento_2" || d.tipo === "orcamento_3",
@@ -452,6 +488,51 @@ function Row({
                 <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
                 <span className="text-xs" style={{ color: "#64748B" }}>{row.fornecedor.contato_email}</span>
               </div>
+            )}
+          </div>
+          {/* OS / PI inline */}
+          <div className="mt-1.5">
+            {editandoOsPi ? (
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-xs font-semibold" style={{ color: "#64748B" }}>{osPiLabel}:</span>
+                <input
+                  autoFocus
+                  value={osPiInput}
+                  onChange={(e) => setOsPiInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSalvarOsPi(); if (e.key === "Escape") { setEditandoOsPi(false); setOsPiInput(osPiLocal ?? ""); } }}
+                  placeholder={`Nº ${osPiLabel}`}
+                  className="text-xs px-1.5 py-0.5 rounded border outline-none font-mono w-24"
+                  style={{ borderColor: "#CBD5E1", color: "#0F172A" }}
+                />
+                <button
+                  onClick={handleSalvarOsPi}
+                  disabled={salvandoOsPi}
+                  className="text-xs px-2 py-0.5 rounded font-medium text-white"
+                  style={{ backgroundColor: salvandoOsPi ? "#94A3B8" : "#2E60FF" }}
+                >
+                  {salvandoOsPi ? <Loader2 className="w-3 h-3 animate-spin" /> : "OK"}
+                </button>
+                <button
+                  onClick={() => { setEditandoOsPi(false); setOsPiInput(osPiLocal ?? ""); setErroOsPi(null); }}
+                  className="text-xs" style={{ color: "#94A3B8" }}
+                >×</button>
+                {erroOsPi && <span className="text-xs" style={{ color: "#DC2626" }}>{erroOsPi}</span>}
+              </div>
+            ) : (
+              <button
+                onClick={() => { setOsPiInput(osPiLocal ?? ""); setEditandoOsPi(true); }}
+                className="flex items-center gap-1 group"
+                title={`Editar número ${osPiLabel}`}
+              >
+                <span className="text-xs font-semibold" style={{ color: "#64748B" }}>{osPiLabel}:</span>
+                <span
+                  className="text-xs font-mono"
+                  style={{ color: osPiLocal ? "#0F172A" : "#CBD5E1" }}
+                >
+                  {osPiLocal ?? "—"}
+                </span>
+                <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "#94A3B8" }} />
+              </button>
             )}
           </div>
         </td>
@@ -820,6 +901,14 @@ export function MonitoramentoClient({
     );
   }
 
+  function handleOsPiChange(ffId: string, value: string | null) {
+    setFfs((prev) =>
+      prev.map((ff) =>
+        ff.id !== ffId ? ff : { ...ff, numero_os_pi: value },
+      ),
+    );
+  }
+
 
   const rows = useMemo(() => ffs.map(computeRow), [ffs]);
 
@@ -976,7 +1065,7 @@ export function MonitoramentoClient({
                     <GroupHeader key={`header-${tipo}`} label={tipoLabel(tipo)} count={grupoRows.length} />
                   )}
                   {grupoRows.map((row) => (
-                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} onToggle={handleToggle} />
+                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} onToggle={handleToggle} onOsPiChange={handleOsPiChange} />
                   ))}
                 </>
               ))}
