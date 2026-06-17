@@ -9,6 +9,16 @@ import { ImportarIClipsModal } from "@/components/faturamentos/ImportarIClipsMod
 import { DeletarFaturamentoModal } from "@/components/faturamentos/DeletarFaturamentoModal";
 
 
+const ETAPA_NOME: Record<number, string> = {
+  1: "Iniciar Faturamento",
+  2: "Revisão de Documentação",
+  3: "Documentação Agência",
+  4: "Revisão do Processo",
+  5: "Publicação",
+  6: "Aguardando Validação",
+  7: "Conclusão",
+};
+
 const clienteTipo: Record<string, { label: string; color: string }> = {
   governo_al: { label: "Governo AL", color: "#00246D" },
   sebrae: { label: "SEBRAE", color: "#2E60FF" },
@@ -26,9 +36,9 @@ type Faturamento = {
 function ProgressBar({ etapaAtual }: { etapaAtual: number }) {
   return (
     <div className="flex items-center gap-0.5">
-      {Array.from({ length: 8 }, (_, i) => (
+      {Array.from({ length: 7 }, (_, i) => (
         <div key={i} className="h-1.5 flex-1 rounded-full" style={{
-          backgroundColor: i < etapaAtual - 1 ? "#2E60FF" : i === etapaAtual - 1 ? "#00E7FF" : "#E2E8F0"
+          backgroundColor: i < etapaAtual - 1 ? "#10B981" : i === etapaAtual - 1 ? "#2E60FF" : "#E2E8F0"
         }} />
       ))}
     </div>
@@ -102,7 +112,9 @@ export function FaturamentosClient({ faturamentos, isGestor }: { faturamentos: F
                     </p>
                     <div className="mt-4">
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs" style={{ color: "#94A3B8" }}>Etapa {fat.etapa_atual} de 8</span>
+                        <span className="text-xs" style={{ color: "#94A3B8" }}>
+                          Etapa {fat.etapa_atual} de 7 — {ETAPA_NOME[fat.etapa_atual] ?? "Em andamento"}
+                        </span>
                       </div>
                       <ProgressBar etapaAtual={fat.etapa_atual} />
                     </div>

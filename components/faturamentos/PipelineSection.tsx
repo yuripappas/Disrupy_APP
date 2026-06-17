@@ -24,7 +24,7 @@ interface Props {
 }
 
 const STATUS_STYLE: Record<EtapaStatus, { ring: string; bg: string; text: string }> = {
-  concluida:       { ring: '#2E60FF', bg: '#2E60FF', text: 'white' },
+  concluida:       { ring: '#10B981', bg: '#10B981', text: 'white' },
   em_andamento:    { ring: '#00246D', bg: '#00246D', text: 'white' },
   inconformidade:  { ring: '#EF4444', bg: '#EF4444', text: 'white' },
   pendente:        { ring: '#E2E8F0', bg: 'white',   text: '#94A3B8' },
@@ -254,9 +254,13 @@ function EtapaCircle({
   isSelected?: boolean;
   onSelect?: () => void;
 }) {
-  const style = STATUS_STYLE[etapa.status];
+  const estaRetornado = etapa.status === 'em_andamento' && (etapa.retornos ?? 0) > 0;
+  const style = estaRetornado
+    ? { ring: '#D97706', bg: '#D97706', text: 'white' }
+    : STATUS_STYLE[etapa.status];
   const icon =
     etapa.status === 'concluida'      ? <Check         className="w-3.5 h-3.5 text-white" /> :
+    estaRetornado                     ? <AlertTriangle className="w-3.5 h-3.5 text-white" /> :
     etapa.status === 'em_andamento'   ? <Clock         className="w-3.5 h-3.5 text-white" /> :
     etapa.status === 'inconformidade' ? <AlertTriangle className="w-3.5 h-3.5 text-white" /> :
     null;
@@ -283,10 +287,11 @@ function EtapaCircle({
           className="text-xs text-center mt-1.5 max-w-[70px] leading-tight"
           style={{
             color:
-              isSelected            ? '#2E60FF'  :
-              etapa.status === 'em_andamento'   ? '#00246D' :
-              etapa.status === 'concluida'       ? '#2E60FF' :
-              etapa.status === 'inconformidade'  ? '#EF4444' :
+              isSelected                         ? '#2E60FF'  :
+              estaRetornado                      ? '#D97706' :
+              etapa.status === 'em_andamento'    ? '#00246D' :
+              etapa.status === 'concluida'        ? '#10B981' :
+              etapa.status === 'inconformidade'   ? '#EF4444' :
               '#94A3B8',
             fontWeight: isSelected || etapa.status === 'em_andamento' ? 600 : 400,
           }}
@@ -305,7 +310,7 @@ function EtapaCircle({
       {!isLast && (
         <div
           className="h-0.5 w-10 mx-1 flex-shrink-0 mb-7"
-          style={{ backgroundColor: etapa.status === 'concluida' ? '#2E60FF' : '#E2E8F0' }}
+          style={{ backgroundColor: etapa.status === 'concluida' ? '#10B981' : '#E2E8F0' }}
         />
       )}
     </div>
