@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronUp, FileText, ExternalLink,
   CheckCircle, XCircle, Clock, Check, X, Loader2,
   Copy, Link2, AlertTriangle, Search, Film, Send, Calendar,
-  Users, UserPlus, Phone, Mail, User, MessageSquare, ArrowUpRight, Upload,
+  UserPlus, Phone, Mail, User, MessageSquare, Upload,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeName } from "@/lib/iclips/parser";
@@ -16,6 +16,8 @@ import { formatCurrency } from "@/lib/utils";
 type Disparo = {
   id: string;
   status: string;
+  tipo?: string;
+  subtipo?: string;
   created_at: string;
   enviado_em: string | null;
   agendado_para: string | null;
@@ -283,6 +285,140 @@ function InternalOrcUploadSlot({
   );
 }
 
+// ── Helpers de disparo ────────────────────────────────────────────────────────
+
+function subtipoLabel(subtipo?: string): string {
+  const map: Record<string, string> = {
+    link_inicial: "Convite",
+    lembrete:     "Lembrete",
+    confirmacao:  "Confirmação",
+  };
+  return map[subtipo ?? ""] ?? (subtipo ?? "Mensagem");
+}
+
+// ── InternalOrcRow ────────────────────────────────────────────────────────────
+// Renderiza orçamento_2/3 interno diretamente na lista de documentos,
+// com botão "Anexar" inline — sem seção separada.
+
+function InternalOrcRow({
+  doc, fornecedor, faturamentoInfo, ffId, onOrcUploaded,
+}: {
+  doc: Documento;
+  fornecedor: FornecedorEmbed;
+  faturamentoInfo: FaturamentoInfo;
+  ffId: string;
+  onOrcUploaded: (ffId: string, docId: string, arquivoUrl: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [file,      setFile]      = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [erro,      setErro]      = useState<string | null>(null);
+
+  const canUpload = doc.status !== "aprovado";
+  const cfg = docStatusCfg[doc.status] ?? docStatusCfg.pendente;
+  const { Icon } = cfg;
+
+  async function handleUpload() {
+    if (!file) return;
+    setUploading(true); setErro(null);
+    try {
+      const scriptUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL;
+      if (!scriptUrl) throw new Error("Serviço de upload não configurado.");
+      const fileContent = await fileToBase64(file);
+      const subpasta    = fornecedor.tipo === "midia" ? "PI" : fornecedor.tipo === "producao" ? "OS" : "CUSTO INTERNO";
+      const prefixo     = doc.tipo === "orcamento_2" ? "OC2" : "OC3";
+      const nomeArquivo = `${prefixo}_${file.name}`;
+      const driveRes = await fetch(scriptUrl, {
+        method: "POST", headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          fileName: nomeArquivo, fileContent, mimeType: file.type || "application/octet-stream",
+          ano: new Date().getFullYear(),
+          clienteGrupo:   faturamentoInfo.clienteTipo === "governo_al" ? "GOVERNO DE ALAGOAS" : "",
+          clienteNome:    faturamentoInfo.clienteNome  ?? "SEM_CLIENTE",
+          jobId:          faturamentoInfo.jobId        ?? `FF-${doc.id.slice(0, 6)}`,
+          campanha:       faturamentoInfo.nomeCampanha ?? "SEM_NOME",
+          subpasta, fornecedorNome: fornecedor.razao_social,
+        }),
+      });
+      const driveData = await driveRes.json() as { ok: boolean; viewUrl?: string; error?: string };
+      if (!driveData.ok || !driveData.viewUrl) throw new Error(driveData.error ?? "Falha no upload");
+      const saveRes = await fetch("/api/drive/salvar-arquivo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentoId: doc.id, viewUrl: driveData.viewUrl, fileName: nomeArquivo, fileSize: file.size }),
+      });
+      if (!saveRes.ok) {
+        const err = await saveRes.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? "Erro ao salvar arquivo");
+      }
+      onOrcUploaded(ffId, doc.id, driveData.viewUrl);
+      setFile(null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha no upload");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div style={{ borderBottom: "1px solid #F1F5F9" }}>
+      <div className="flex items-center gap-3 py-3 px-5">
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cfg.bg }}>
+          <FileText className="w-3.5 h-3.5" style={{ color: cfg.color }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm" style={{ color: "#334155" }}>{doc.label}</p>
+          {(doc.documento_arquivos?.length ?? 0) > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {doc.documento_arquivos.map((arq) => (
+                <a key={arq.id} href={arq.arquivo_url} target="_blank" rel="noreferrer"
+                  className="flex items-center gap-1 text-xs hover:underline" style={{ color: "#2E60FF" }}>
+                  <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                  <span className="truncate max-w-[160px]">{arq.nome_arquivo}</span>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+        <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0"
+          style={{ backgroundColor: cfg.bg, color: cfg.color }}>
+          <Icon className="w-3 h-3" />{cfg.label}
+        </span>
+        {canUpload && (
+          <>
+            <input ref={inputRef} type="file" className="hidden"
+              onChange={(e) => { if (e.target.files?.[0]) { setFile(e.target.files[0]); setErro(null); } e.target.value = ""; }} />
+            {file ? (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="text-xs truncate max-w-[90px]" style={{ color: "#334155" }}>{file.name}</span>
+                <button onClick={handleUpload} disabled={uploading}
+                  className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-medium text-white"
+                  style={{ backgroundColor: uploading ? "#94A3B8" : "#2E60FF" }}>
+                  {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                  {uploading ? "…" : "Enviar"}
+                </button>
+                {!uploading && (
+                  <button onClick={() => setFile(null)} className="text-xs" style={{ color: "#94A3B8" }}>✕</button>
+                )}
+              </div>
+            ) : (
+              <button onClick={() => inputRef.current?.click()}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-medium flex-shrink-0"
+                style={{ backgroundColor: "#EEF2FF", color: "#2E60FF" }}>
+                <Upload className="w-3 h-3" /> Anexar
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      {erro && (
+        <p className="text-xs px-5 pb-2 flex items-center gap-1" style={{ color: "#DC2626" }}>
+          <AlertTriangle className="w-3 h-3" /> {erro}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── DocRow ───────────────────────────────────────────────────────────────────
 
 function DocRow({
@@ -513,6 +649,9 @@ function FornecedorCard({
   const [agendando, setAgendando]             = useState(false);
   const [agendadoEm, setAgendadoEm]           = useState<string | null>(null);
 
+  // Cadência de disparos
+  const [cadenciaAberta, setCadenciaAberta]   = useState(false);
+
   // Contato inline (quando fornecedor não tem WhatsApp)
   const [fornecedorLocal, setFornecedorLocal] = useState(ff.fornecedor!);
   const [adicionandoContato, setAdicionandoContato] = useState(false);
@@ -625,6 +764,79 @@ function FornecedorCard({
         </div>
       </div>
 
+      {/* Barra de status do último disparo + botão Ver cadência */}
+      {(() => {
+        const sorted = [...(ff.disparos ?? [])].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
+        const last = sorted[0];
+        if (!last) return null;
+        const statusMap: Record<string, { label: string; bg: string; color: string; Icon: React.ElementType }> = {
+          enviado:    { label: "Enviado",     bg: "#ECFDF5", color: "#059669", Icon: CheckCircle },
+          agendado:   { label: "Agendado",    bg: "#FEF3C7", color: "#D97706", Icon: Calendar },
+          falhou:     { label: "Falhou",      bg: "#FEF2F2", color: "#DC2626", Icon: XCircle },
+          nao_enviado:{ label: "Não enviado", bg: "#F1F5F9", color: "#94A3B8", Icon: Clock },
+        };
+        const sCfg = statusMap[last.status] ?? statusMap.nao_enviado;
+        const { Icon: SIcon } = sCfg;
+        return (
+          <div className="flex items-center justify-between px-5 py-2.5 gap-3"
+            style={{ borderBottom: "1px solid #F1F5F9", backgroundColor: "#FAFBFC" }}>
+            <div className="flex items-center gap-2 min-w-0">
+              <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#94A3B8" }} />
+              <span className="text-xs" style={{ color: "#64748B" }}>
+                Último disparo: <span className="font-medium">{subtipoLabel(last.subtipo)}</span>
+                {last.enviado_em && (
+                  <> · {formatarDataHora(last.enviado_em)}</>
+                )}
+              </span>
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
+                style={{ backgroundColor: sCfg.bg, color: sCfg.color }}>
+                <SIcon className="w-3 h-3" />{sCfg.label}
+              </span>
+            </div>
+            <button
+              onClick={() => setCadenciaAberta((v) => !v)}
+              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-medium flex-shrink-0"
+              style={{ backgroundColor: cadenciaAberta ? "#EEF2FF" : "#F1F5F9", color: cadenciaAberta ? "#2E60FF" : "#64748B" }}>
+              {cadenciaAberta ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              Ver cadência
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* Painel de cadência expandido */}
+      {cadenciaAberta && (ff.disparos ?? []).length > 0 && (
+        <div className="px-5 py-3 space-y-1.5" style={{ borderBottom: "1px solid #F1F5F9", backgroundColor: "#F8FAFC" }}>
+          {[...(ff.disparos ?? [])]
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            .map((d) => {
+              const statusMap: Record<string, { label: string; bg: string; color: string }> = {
+                enviado:  { label: "Enviado",  bg: "#ECFDF5", color: "#059669" },
+                agendado: { label: "Agendado", bg: "#FEF3C7", color: "#D97706" },
+                falhou:   { label: "Falhou",   bg: "#FEF2F2", color: "#DC2626" },
+              };
+              const dCfg = statusMap[d.status] ?? { label: d.status, bg: "#F1F5F9", color: "#94A3B8" };
+              const dataStr = d.enviado_em
+                ? formatarDataHora(d.enviado_em)
+                : d.agendado_para
+                  ? `⏰ ${formatarDataHora(d.agendado_para)}`
+                  : formatarDataHora(d.created_at);
+              return (
+                <div key={d.id} className="flex items-center gap-2 text-xs">
+                  <span style={{ color: "#94A3B8" }} className="flex-shrink-0 font-mono">{dataStr}</span>
+                  <span className="font-medium flex-shrink-0" style={{ color: "#334155" }}>{subtipoLabel(d.subtipo)}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
+                    style={{ backgroundColor: dCfg.bg, color: dCfg.color }}>
+                    {dCfg.label}
+                  </span>
+                </div>
+              );
+            })}
+        </div>
+      )}
+
       {/* Documentos */}
       <div>
         {ff.documentos
@@ -632,46 +844,26 @@ function FornecedorCard({
             const order: Record<string, number> = { reprovado: 0, enviado: 1, pendente: 2, aprovado: 3 };
             return (order[a.status] ?? 2) - (order[b.status] ?? 2);
           })
-          .map((doc) => (
-            <DocRow key={doc.id} doc={doc} isRevisor={isRevisor}
-              onAction={(docId, acao, motivo) => onDocAction(ff.id, docId, acao, motivo)}
-              onNfAtualizado={(docId, nf) => onNfAtualizado(ff.id, docId, nf)} />
-          ))}
+          .map((doc) => {
+            const isInternalOrc =
+              !ff.orcamentos_internos_habilitado &&
+              faturamentoInfo &&
+              ff.fornecedor &&
+              (doc.tipo === "orcamento_2" || doc.tipo === "orcamento_3");
+            if (isInternalOrc) {
+              return (
+                <InternalOrcRow key={doc.id} doc={doc}
+                  fornecedor={ff.fornecedor!} faturamentoInfo={faturamentoInfo!}
+                  ffId={ff.id} onOrcUploaded={onOrcUploaded} />
+              );
+            }
+            return (
+              <DocRow key={doc.id} doc={doc} isRevisor={isRevisor}
+                onAction={(docId, acao, motivo) => onDocAction(ff.id, docId, acao, motivo)}
+                onNfAtualizado={(docId, nf) => onNfAtualizado(ff.id, docId, nf)} />
+            );
+          })}
       </div>
-
-      {/* Orçamentos internos — agência preenche 2 e 3 quando toggle está OFF */}
-      {!ff.orcamentos_internos_habilitado &&
-        faturamentoInfo &&
-        ff.fornecedor &&
-        ff.documentos.some((d) => d.tipo === "orcamento_2" || d.tipo === "orcamento_3") && (
-          <div className="px-5 py-4" style={{ borderTop: "1px solid #E2E8F0", backgroundColor: "#F8FAFC" }}>
-            <p className="text-xs font-semibold mb-3" style={{ color: "#334155" }}>
-              Orçamentos Internos (preenchimento pela agência)
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              {ff.documentos.filter((d) => d.tipo === "orcamento_2").map((doc) => (
-                <InternalOrcUploadSlot
-                  key={doc.id}
-                  doc={doc}
-                  label="Orçamento 2"
-                  fornecedor={ff.fornecedor!}
-                  faturamentoInfo={faturamentoInfo}
-                  onUploaded={(docId, url) => onOrcUploaded(ff.id, docId, url)}
-                />
-              ))}
-              {ff.documentos.filter((d) => d.tipo === "orcamento_3").map((doc) => (
-                <InternalOrcUploadSlot
-                  key={doc.id}
-                  doc={doc}
-                  label="Orçamento 3"
-                  fornecedor={ff.fornecedor!}
-                  faturamentoInfo={faturamentoInfo}
-                  onUploaded={(docId, url) => onOrcUploaded(ff.id, docId, url)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
 
       {/* Footer */}
       <div className="px-5 py-3 space-y-2" style={{ backgroundColor: "#F8FAFC" }}>
@@ -1213,7 +1405,6 @@ function LoteModal({
 function GroupSection({
   title, accentColor, accentBg, count, total, pendingCount = 0,
   children, defaultOpen = false,
-  loteAction,
 }: {
   title: string;
   accentColor: string;
@@ -1223,7 +1414,6 @@ function GroupSection({
   pendingCount?: number;
   children: React.ReactNode;
   defaultOpen?: boolean;
-  loteAction?: { count: number; onClick: () => void };
 }) {
   const [aberto, setAberto] = useState(defaultOpen);
 
@@ -1252,16 +1442,6 @@ function GroupSection({
               {pendingCount} sem associação
             </span>
           )}
-          {loteAction && loteAction.count > 0 && (
-            <button
-              onClick={(e) => { e.stopPropagation(); loteAction.onClick(); }}
-              className="flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium transition-colors hover:opacity-80"
-              style={{ backgroundColor: "#EEF2FF", color: "#2E60FF" }}
-            >
-              <Users className="w-3 h-3" />
-              Enviar para todos ({loteAction.count})
-            </button>
-          )}
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           <span className="text-sm font-bold" style={{ color: "#0F172A" }}>{formatCurrency(total)}</span>
@@ -1289,7 +1469,6 @@ export function DocumentacaoSection({
   faturamentoInfo?: FaturamentoInfo | null;
 }) {
   const [ffs, setFFs] = useState<FF[]>(fornecedores);
-  const [loteModal, setLoteModal] = useState<{ titulo: string; ffs: FF[] } | null>(null);
 
   const handleOrcUploaded = useCallback((ffId: string, docId: string, arquivoUrl: string) => {
     setFFs((prev) => prev.map((ff) =>
@@ -1342,61 +1521,17 @@ export function DocumentacaoSection({
     ));
   }, []);
 
-  async function handleEnviarLote(ffIds: string[], agendadoPara?: string) {
-    await fetch("/api/disparos/lote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ffIds, agendadoPara }),
-    });
-  }
-
   const midia    = ffs.filter((f) => f.fornecedor?.tipo === "midia"    || (f.associado === false && f.tipo_iclips === "midia"));
   const producao = ffs.filter((f) => f.fornecedor?.tipo === "producao" || (f.associado === false && f.tipo_iclips === "producao"));
 
   const midiasPendentes   = midia.filter(isFfPending).length;
   const producaoPendentes = producao.filter(isFfPending).length;
 
-  // FFs elegíveis para envio em lote (associados + com WhatsApp)
-  const midiaComWpp    = midia.filter((f)    => !isFfPending(f) && f.fornecedor?.contato_whatsapp && f.link_token);
-  const producaoComWpp = producao.filter((f) => !isFfPending(f) && f.fornecedor?.contato_whatsapp && f.link_token);
-
   const totalMidia    = midia.reduce((s, f) => s + (f.valor_total ?? 0), 0);
   const totalProducao = producao.reduce((s, f) => s + (f.valor_total ?? 0), 0);
   const totalCustos   = custosInternos.reduce((s, c) => s + (c.valor_total ?? 0), 0);
 
   const hasAny = midia.length > 0 || producao.length > 0 || custosInternos.length > 0;
-
-  // ── Resumo de disparos ──────────────────────────────────────────────────────
-  // Apenas fornecedores elegíveis (associados + WhatsApp + link)
-  const elegíveis = ffs.filter(
-    (f) => !isFfPending(f) && f.fornecedor?.contato_whatsapp && f.link_token,
-  );
-
-  function getLastDisparoStatus(ff: FF): "nao_enviado" | "agendado" | "enviado" | "falhou" {
-    const sorted = [...(ff.disparos ?? [])].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
-    const last = sorted[0];
-    if (!last) return "nao_enviado";
-    if (last.status === "agendado") return "agendado";
-    if (last.status === "enviado")  return "enviado";
-    return "falhou";
-  }
-
-  function isRespondeu(ff: FF) {
-    const docs = ff.documentos ?? [];
-    return docs.length > 0 && docs.every((d) => d.status !== "pendente");
-  }
-
-  const resumo = {
-    total:      elegíveis.length,
-    enviados:   elegíveis.filter((f) => getLastDisparoStatus(f) === "enviado").length,
-    agendados:  elegíveis.filter((f) => getLastDisparoStatus(f) === "agendado").length,
-    responderam:elegíveis.filter(isRespondeu).length,
-    pendentes:  elegíveis.filter((f) => getLastDisparoStatus(f) === "nao_enviado").length,
-    semWpp:     ffs.filter((f) => !isFfPending(f) && !f.fornecedor?.contato_whatsapp).length,
-  };
-  // ───────────────────────────────────────────────────────────────────────────
 
   if (!hasAny) {
     return (
@@ -1409,71 +1544,11 @@ export function DocumentacaoSection({
 
   return (
     <div>
-      {/* Painel resumo de disparos */}
-      {elegíveis.length > 0 && (
-        <div
-          className="rounded-xl border px-5 py-3.5 mb-4 flex items-center justify-between flex-wrap gap-3"
-          style={{ borderColor: "#E2E8F0", backgroundColor: "#F8FAFC" }}
-        >
-          <div className="flex items-center gap-1.5 flex-wrap gap-y-2">
-            <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#64748B" }} />
-            <span className="text-xs font-medium mr-2" style={{ color: "#64748B" }}>Disparos:</span>
-
-            {resumo.responderam > 0 && (
-              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{ backgroundColor: "#ECFDF5", color: "#059669" }}>
-                <CheckCircle className="w-3 h-3" />
-                {resumo.responderam} responderam
-              </span>
-            )}
-            {resumo.enviados > 0 && (
-              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{ backgroundColor: "#EEF2FF", color: "#2E60FF" }}>
-                <Send className="w-3 h-3" />
-                {resumo.enviados} enviados
-              </span>
-            )}
-            {resumo.agendados > 0 && (
-              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{ backgroundColor: "#F5F3FF", color: "#7C3AED" }}>
-                <Calendar className="w-3 h-3" />
-                {resumo.agendados} agendados
-              </span>
-            )}
-            {resumo.pendentes > 0 && (
-              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{ backgroundColor: "#FFFBEB", color: "#D97706" }}>
-                <Clock className="w-3 h-3" />
-                {resumo.pendentes} não enviados
-              </span>
-            )}
-            {resumo.semWpp > 0 && (
-              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{ backgroundColor: "#F1F5F9", color: "#94A3B8" }}>
-                {resumo.semWpp} sem WhatsApp
-              </span>
-            )}
-          </div>
-
-          <a
-            href="/disparos"
-            className="flex items-center gap-1 text-xs font-medium flex-shrink-0"
-            style={{ color: "#2E60FF" }}
-          >
-            Ver central <ArrowUpRight className="w-3 h-3" />
-          </a>
-        </div>
-      )}
-
       {/* Mídia */}
       {midia.length > 0 && (
         <GroupSection
           title="Mídia" accentColor="#2E60FF" accentBg="#EEF2FF"
           count={midia.length} total={totalMidia} pendingCount={midiasPendentes}
-          loteAction={isRevisor && midiaComWpp.length > 0 ? {
-            count: midiaComWpp.length,
-            onClick: () => setLoteModal({ titulo: "Mídia", ffs: midiaComWpp }),
-          } : undefined}
         >
           {midia.map((ff) =>
             isFfPending(ff) ? (
@@ -1490,10 +1565,6 @@ export function DocumentacaoSection({
         <GroupSection
           title="Produção" accentColor="#7C3AED" accentBg="#F5F3FF"
           count={producao.length} total={totalProducao} pendingCount={producaoPendentes}
-          loteAction={isRevisor && producaoComWpp.length > 0 ? {
-            count: producaoComWpp.length,
-            onClick: () => setLoteModal({ titulo: "Produção", ffs: producaoComWpp }),
-          } : undefined}
         >
           {producao.map((ff) =>
             isFfPending(ff) ? (
@@ -1538,15 +1609,6 @@ export function DocumentacaoSection({
         </GroupSection>
       )}
 
-      {/* Modal de envio em lote */}
-      {loteModal && (
-        <LoteModal
-          titulo={loteModal.titulo}
-          ffs={loteModal.ffs}
-          onClose={() => setLoteModal(null)}
-          onConfirm={handleEnviarLote}
-        />
-      )}
     </div>
   );
 }
