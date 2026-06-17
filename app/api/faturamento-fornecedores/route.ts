@@ -64,8 +64,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 // PUT /api/faturamento-fornecedores
-// Atualiza o número de OS/PI de um fornecedor no faturamento
-// Body: { ffId: string, numeroOsPi: string }
+// Atualiza campos de um faturamento_fornecedor.
+// Body: { ffId: string, numeroOsPi?: string, orcamentosInternosHabilitado?: boolean }
 export async function PUT(req: NextRequest) {
   const supabase = await createClient();
 
@@ -80,15 +80,29 @@ export async function PUT(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { ffId, numeroOsPi } = body as { ffId: string; numeroOsPi: string };
+  const { ffId, numeroOsPi, orcamentosInternosHabilitado } = body as {
+    ffId: string;
+    numeroOsPi?: string;
+    orcamentosInternosHabilitado?: boolean;
+  };
 
   if (!ffId) {
     return NextResponse.json({ error: "ffId é obrigatório" }, { status: 400 });
   }
 
+  const updateData: Record<string, unknown> = {};
+  if (numeroOsPi !== undefined) updateData.numero_os_pi = numeroOsPi ?? null;
+  if (orcamentosInternosHabilitado !== undefined) {
+    updateData.orcamentos_internos_habilitado = orcamentosInternosHabilitado;
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return NextResponse.json({ error: "Nenhum campo para atualizar" }, { status: 400 });
+  }
+
   const { error: updateErr } = await supabase
     .from("faturamento_fornecedores")
-    .update({ numero_os_pi: numeroOsPi ?? null })
+    .update(updateData)
     .eq("id", ffId);
 
   if (updateErr) {

@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import {
   FileText, Upload, CheckCircle, Clock, XCircle,
   ExternalLink, Loader2, AlertTriangle, MessageSquare, X,
-  Film, Image, Archive, Trash2,
+  Film, Image, Archive, Trash2, Lock,
 } from "lucide-react";
 
 // ── PDF text extraction (pdfjs-dist) ──────────────────────────────────────────
@@ -609,6 +609,43 @@ function DocRow({
   );
 }
 
+// ── LockedDocCard ─────────────────────────────────────────────────────────────
+// Exibido para orçamento_2 e orçamento_3: preenchimento é interno (agência).
+// O fornecedor vê o slot como bloqueado e não pode interagir.
+
+function LockedDocCard({ doc }: { doc: Documento }) {
+  return (
+    <div
+      className="p-4 rounded-xl border bg-white"
+      style={{ borderColor: "#E2E8F0", opacity: 0.8 }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+          style={{ backgroundColor: "#F1F5F9" }}
+        >
+          <Lock className="w-4 h-4" style={{ color: "#94A3B8" }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold" style={{ color: "#334155" }}>{doc.label}</p>
+          <p className="text-xs mt-1" style={{ color: "#94A3B8" }}>
+            Preenchimento interno — realizado pela agência
+          </p>
+          {(doc.status === "enviado" || doc.status === "aprovado") && (
+            <span
+              className="inline-flex items-center gap-1 mt-2 text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{ color: "#059669", backgroundColor: "#ECFDF5" }}
+            >
+              <CheckCircle className="w-3 h-3" />
+              {doc.status === "aprovado" ? "Aprovado" : "Preenchido"}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── PortalClient ──────────────────────────────────────────────────────────────
 
 export function PortalClient({ ff, token }: { ff: FF; token: string }) {
@@ -646,9 +683,11 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
     );
   }, []);
 
-  const enviados  = docs.filter((d) => d.status === "enviado"  || d.status === "aprovado").length;
-  const aprovados = docs.filter((d) => d.status === "aprovado").length;
-  const total     = docs.length;
+  // Exclui orçamentos internos (2 e 3) da contagem de progresso do fornecedor
+  const supplierDocs = docs.filter((d) => d.tipo !== "orcamento_2" && d.tipo !== "orcamento_3");
+  const enviados  = supplierDocs.filter((d) => d.status === "enviado"  || d.status === "aprovado").length;
+  const aprovados = supplierDocs.filter((d) => d.status === "aprovado").length;
+  const total     = supplierDocs.length;
   const pct       = total > 0 ? Math.round((enviados / total) * 100) : 0;
   const allDone   = enviados === total && total > 0;
 
@@ -738,19 +777,23 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
               const order = { reprovado: 0, pendente: 1, enviado: 2, aprovado: 3 };
               return (order[a.status as keyof typeof order] ?? 1) - (order[b.status as keyof typeof order] ?? 1);
             })
-            .map((doc) => (
-              <DocRow
-                key={doc.id}
-                doc={doc}
-                ffId={ff.id}
-                faturamento={ff.faturamento}
-                fornecedorTipo={ff.fornecedor.tipo}
-                fornecedorNome={ff.fornecedor.razao_social}
-                token={token}
-                onUploaded={handleUploaded}
-                onDeleted={handleDeleted}
-              />
-            ))}
+            .map((doc) =>
+              doc.tipo === "orcamento_2" || doc.tipo === "orcamento_3" ? (
+                <LockedDocCard key={doc.id} doc={doc} />
+              ) : (
+                <DocRow
+                  key={doc.id}
+                  doc={doc}
+                  ffId={ff.id}
+                  faturamento={ff.faturamento}
+                  fornecedorTipo={ff.fornecedor.tipo}
+                  fornecedorNome={ff.fornecedor.razao_social}
+                  token={token}
+                  onUploaded={handleUploaded}
+                  onDeleted={handleDeleted}
+                />
+              )
+            )}
         </div>
 
         {/* Footer */}

@@ -171,7 +171,14 @@ export function FaturamentoPipelineContent({
         valor: ff.valor ?? 0,
         tipo: ff.fornecedor?.tipo ?? ff.tipo_iclips ?? null,
         envio_inicial_em: ff.envio_inicial_em ?? null,
-        faturamento: { id: faturamentoId, nome_campanha: nomeCampanha, iclips_job_id: jobId },
+        orcamentos_internos_habilitado: ff.orcamentos_internos_habilitado ?? false,
+        faturamento: {
+          id: faturamentoId,
+          nome_campanha: nomeCampanha,
+          iclips_job_id: jobId,
+          cliente_tipo: clienteTipo,
+          cliente_nome: clienteNome,
+        },
         fornecedor: {
           id: ff.fornecedor.id,
           razao_social: ff.fornecedor.razao_social,
@@ -182,7 +189,12 @@ export function FaturamentoPipelineContent({
           telefone: ff.fornecedor.telefone ?? null,
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        documentos: (ff.documentos ?? []).map((d: any) => ({ id: d.id, status: d.status })),
+        documentos: (ff.documentos ?? []).map((d: any) => ({
+          id: d.id,
+          status: d.status,
+          tipo: d.tipo ?? null,
+          arquivo_url: d.arquivo_url ?? null,
+        })),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         disparos: (ff.disparos ?? []).map((d: any) => ({
           id: d.id,
