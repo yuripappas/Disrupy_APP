@@ -80,10 +80,11 @@ export async function PUT(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { ffId, numeroOsPi, orcamentosInternosHabilitado } = body as {
+  const { ffId, numeroOsPi, orcamentosInternosHabilitado, faturamentoManual } = body as {
     ffId: string;
     numeroOsPi?: string;
     orcamentosInternosHabilitado?: boolean;
+    faturamentoManual?: boolean;
   };
 
   if (!ffId) {
@@ -95,6 +96,7 @@ export async function PUT(req: NextRequest) {
   if (orcamentosInternosHabilitado !== undefined) {
     updateData.orcamentos_internos_habilitado = orcamentosInternosHabilitado;
   }
+  if (faturamentoManual !== undefined) updateData.faturamento_manual = faturamentoManual;
 
   if (Object.keys(updateData).length === 0) {
     return NextResponse.json({ error: "Nenhum campo para atualizar" }, { status: 400 });

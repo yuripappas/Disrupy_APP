@@ -38,6 +38,7 @@ export type FFRow = {
   envio_inicial_em?: string | null;
   orcamentos_internos_habilitado?: boolean;
   numero_os_pi?: string | null;
+  faturamento_manual?: boolean;
   faturamento: {
     id: string;
     nome_campanha: string;
@@ -335,6 +336,7 @@ function Row({
   onToggle,
   onOsPiChange,
   onContatoChange,
+  onManualChange,
   selected,
   onSelect,
 }: {
@@ -345,6 +347,7 @@ function Row({
   onToggle: (ffId: string, enabled: boolean) => void;
   onOsPiChange: (ffId: string, value: string | null) => void;
   onContatoChange: (ffId: string, contato: { contato_nome: string | null; contato_whatsapp: string | null; contato_email: string | null }) => void;
+  onManualChange: (ffId: string, manual: boolean) => void;
   selected: boolean;
   onSelect: (ffId: string, checked: boolean) => void;
 }) {
@@ -373,6 +376,9 @@ function Row({
   const [contatoInput, setContatoInput]       = useState({ nome: "", wa: "", email: "" });
   const [salvandoContato, setSalvandoContato] = useState(false);
   const [erroContato, setErroContato]         = useState<string | null>(null);
+
+  const [faturamentoManual, setFaturamentoManual] = useState(row.faturamento_manual ?? false);
+  const [toglingManual, setToglingManual]           = useState(false);
 
   const semContato = !contatoLocal.wa && !contatoLocal.email;
 
@@ -444,6 +450,28 @@ function Row({
       setErroContato("Erro ao salvar");
     } finally {
       setSalvandoContato(false);
+    }
+  }
+
+  async function handleToggleManual() {
+    const newVal = !faturamentoManual;
+    setFaturamentoManual(newVal);
+    setToglingManual(true);
+    try {
+      const res = await fetch("/api/faturamento-fornecedores", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ffId: row.id, faturamentoManual: newVal }),
+      });
+      if (!res.ok) {
+        setFaturamentoManual(!newVal);
+      } else {
+        onManualChange(row.id, newVal);
+      }
+    } catch {
+      setFaturamentoManual(!newVal);
+    } finally {
+      setToglingManual(false);
     }
   }
 
@@ -531,7 +559,7 @@ function Row({
         className="transition-colors"
         style={{
           borderBottom: "1px solid #F1F5F9",
-          backgroundColor: semContato ? "#FFFBEB" : isRespondeu ? "#F0FDF4" : row.dispStatus === "enviado" ? "#F0F9FF" : undefined,
+          backgroundColor: faturamentoManual ? "#F5F3FF" : semContato ? "#FFFBEB" : isRespondeu ? "#F0FDF4" : row.dispStatus === "enviado" ? "#F0F9FF" : undefined,
         }}
       >
         {/* Checkbox */}
@@ -540,9 +568,9 @@ function Row({
             type="checkbox"
             checked={selected}
             onChange={(e) => onSelect(row.id, e.target.checked)}
-            disabled={semContato}
+            disabled={semContato || faturamentoManual}
             className="w-4 h-4 rounded accent-blue-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-            title={semContato ? "Adicione contato para selecionar" : "Selecionar fornecedor"}
+            title={faturamentoManual ? "Fornecedor em modo manual" : semContato ? "Adicione contato para selecionar" : "Selecionar fornecedor"}
           />
         </td>
         {/* Fornecedor */}
@@ -660,14 +688,21 @@ function Row({
 
         {/* Último disparo */}
         <td className="px-5 py-3.5">
-          <UltimoDisparoCel row={row} />
+          {faturamentoManual ? (
+            <span className="text-xs px-2.5 py-1 rounded-full font-medium"
+              style={{ backgroundColor: "#EDE9FE", color: "#7C3AED" }}>
+              Faturamento Interno
+            </span>
+          ) : (
+            <UltimoDisparoCel row={row} />
+          )}
         </td>
 
         {/* Ações */}
         <td className="px-5 py-3.5">
           <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Enviar — desabilitado sem contato */}
-            {semContato ? (
+            {/* Enviar — oculto quando manual */}
+            {!faturamentoManual && (semContato ? (
               <span
                 className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-medium cursor-not-allowed"
                 style={{ backgroundColor: "#F1F5F9", color: "#CBD5E1" }}
@@ -692,10 +727,10 @@ function Row({
                   : <Send className="w-3 h-3" />}
                 {enviando ? "..." : enviado ? "Enviado!" : row.dispStatus === "nao_enviado" ? "Enviar" : "Reenviar"}
               </button>
-            )}
+            ))}
 
-            {/* Agendar */}
-            {!semContato && (
+            {/* Agendar — oculto quando manual */}
+            {!faturamentoManual && !semContato && (
               <button
                 onClick={() => setMostrarAg((v) => !v)}
                 className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors"
@@ -761,6 +796,30 @@ function Row({
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+
+          {/* Toggle: Faturamento Manual */}
+          <div className="flex items-center gap-1.5 mt-2">
+            <button
+              onClick={handleToggleManual}
+              disabled={toglingManual}
+              className="relative inline-flex h-4 w-8 flex-shrink-0 items-center rounded-full transition-colors"
+              style={{ backgroundColor: faturamentoManual ? "#7C3AED" : "#E2E8F0" }}
+              title={faturamentoManual
+                ? "Modo manual ativo — sem envio de link. Clique para reverter."
+                : "Marcar como faturamento interno (sem envio de link ao fornecedor)"}
+            >
+              {toglingManual
+                ? <Loader2 className="absolute left-0.5 w-3 h-3 animate-spin text-white" />
+                : <span
+                    className="inline-block h-3 w-3 transform rounded-full bg-white transition-transform"
+                    style={{ transform: faturamentoManual ? "translateX(17px)" : "translateX(2px)" }}
+                  />
+              }
+            </button>
+            <span className="text-xs" style={{ color: faturamentoManual ? "#7C3AED" : "#94A3B8" }}>
+              {faturamentoManual ? "Manual ativo" : "Faturar manual"}
+            </span>
           </div>
 
           {/* Confirmação de exclusão inline */}
@@ -924,8 +983,9 @@ function EnviarParaTodosButton({
 
   const temSelecao = selectedIds.size > 0;
   const pendentes = temSelecao
-    ? rows.filter((r) => selectedIds.has(r.id) && (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email))
+    ? rows.filter((r) => selectedIds.has(r.id) && !r.faturamento_manual && (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email))
     : rows.filter((r) =>
+        !r.faturamento_manual &&
         (r.dispStatus === "nao_enviado" || r.dispStatus === "falhou") &&
         (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email)
       );
@@ -1109,6 +1169,14 @@ export function MonitoramentoClient({
     );
   }
 
+  function handleManualChange(ffId: string, manual: boolean) {
+    setFfs((prev) =>
+      prev.map((ff) =>
+        ff.id !== ffId ? ff : { ...ff, faturamento_manual: manual },
+      ),
+    );
+  }
+
   function handleSelect(ffId: string, checked: boolean) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -1121,12 +1189,13 @@ export function MonitoramentoClient({
 
   const kpi = useMemo(() => ({
     total:       rows.length,
-    enviados:    rows.filter((r) => r.dispStatus === "enviado").length,
+    enviados:    rows.filter((r) => !r.faturamento_manual && r.dispStatus === "enviado").length,
     responderam: rows.filter((r) => r.docStatus  === "respondeu").length,
-    pendentes:   rows.filter((r) => r.dispStatus === "nao_enviado" || r.dispStatus === "falhou").length,
-    agendados:   rows.filter((r) => r.dispStatus === "agendado").length,
-    falhou:      rows.filter((r) => r.dispStatus === "falhou").length,
-    semContato:  rows.filter((r) => !r.fornecedor.contato_whatsapp && !r.fornecedor.contato_email).length,
+    pendentes:   rows.filter((r) => !r.faturamento_manual && (r.dispStatus === "nao_enviado" || r.dispStatus === "falhou")).length,
+    agendados:   rows.filter((r) => !r.faturamento_manual && r.dispStatus === "agendado").length,
+    falhou:      rows.filter((r) => !r.faturamento_manual && r.dispStatus === "falhou").length,
+    semContato:  rows.filter((r) => !r.faturamento_manual && !r.fornecedor.contato_whatsapp && !r.fornecedor.contato_email).length,
+    manuais:     rows.filter((r) => r.faturamento_manual).length,
   }), [rows]);
 
   const faturamentos = useMemo(() => {
@@ -1148,6 +1217,7 @@ export function MonitoramentoClient({
         if (filtroStatus === "reprovado"    && r.rowStatus  !== "reprovado")   return false;
         if (filtroStatus === "concluido"    && r.rowStatus  !== "concluido")   return false;
         if (filtroStatus === "sem_contato"  && (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email)) return false;
+        if (filtroStatus === "manual"       && !r.faturamento_manual) return false;
       }
       if (busca) {
         const q = busca.toLowerCase();
@@ -1163,7 +1233,9 @@ export function MonitoramentoClient({
 
   function handleSelectAll(checked: boolean) {
     if (checked) {
-      const eligible = filtered.filter((r) => r.fornecedor.contato_whatsapp || r.fornecedor.contato_email);
+      const eligible = filtered.filter((r) =>
+        !r.faturamento_manual && (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email)
+      );
       setSelectedIds(new Set(eligible.map((r) => r.id)));
     } else {
       setSelectedIds(new Set());
@@ -1208,6 +1280,9 @@ export function MonitoramentoClient({
         {kpi.semContato > 0 && (
           <KpiCard label="Sem contato" value={kpi.semContato} color="#92400E" bg="#FEF3C7" />
         )}
+        {kpi.manuais > 0 && (
+          <KpiCard label="Manual" value={kpi.manuais} color="#7C3AED" bg="#F5F3FF" />
+        )}
       </div>
 
       {/* Filtros */}
@@ -1247,6 +1322,7 @@ export function MonitoramentoClient({
         >
           <option value="todos">Todos os status</option>
           <option value="sem_contato">⚠ Sem contato</option>
+          <option value="manual">Manual (sem envio)</option>
           <option value="nao_enviado">Não enviado</option>
           <option value="agendado">Agendado</option>
           <option value="enviado">Enviado</option>
@@ -1275,7 +1351,7 @@ export function MonitoramentoClient({
                 <th className="px-3 py-3 w-10">
                   <input
                     type="checkbox"
-                    checked={filtered.length > 0 && filtered.filter((r) => r.fornecedor.contato_whatsapp || r.fornecedor.contato_email).every((r) => selectedIds.has(r.id))}
+                    checked={filtered.length > 0 && filtered.filter((r) => !r.faturamento_manual && (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email)).every((r) => selectedIds.has(r.id))}
                     onChange={(e) => handleSelectAll(e.target.checked)}
                     className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
                     title="Selecionar todos"
@@ -1296,7 +1372,7 @@ export function MonitoramentoClient({
                     <GroupHeader key={`header-${tipo}`} label={tipoLabel(tipo)} count={grupoRows.length} />
                   )}
                   {grupoRows.map((row) => (
-                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} onToggle={handleToggle} onOsPiChange={handleOsPiChange} onContatoChange={handleContatoChange} selected={selectedIds.has(row.id)} onSelect={handleSelect} />
+                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} onToggle={handleToggle} onOsPiChange={handleOsPiChange} onContatoChange={handleContatoChange} onManualChange={handleManualChange} selected={selectedIds.has(row.id)} onSelect={handleSelect} />
                   ))}
                 </>
               ))}

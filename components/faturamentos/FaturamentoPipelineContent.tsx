@@ -157,6 +157,12 @@ export function FaturamentoPipelineContent({
   const etapaAtual = etapas.find((e) => e.status === "em_andamento");
   const [selectedEtapa, setSelectedEtapa] = useState(etapaAtual?.numero ?? 1);
 
+  // Etapa 1 só é "verde" se todos os fornecedores elegíveis foram enviados ou são manuais
+  const hasPendingSends = useMemo(
+    () => ffRows.some((r) => !r.envio_inicial_em && !r.faturamento_manual),
+    [ffRows],
+  );
+
   // Converte FF[] → FFRow[] para o MonitoramentoClient da Etapa 1
   const ffRows = useMemo((): FFRow[] => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -173,6 +179,7 @@ export function FaturamentoPipelineContent({
         envio_inicial_em: ff.envio_inicial_em ?? null,
         orcamentos_internos_habilitado: ff.orcamentos_internos_habilitado ?? false,
         numero_os_pi: ff.numero_os_pi ?? null,
+        faturamento_manual: ff.faturamento_manual ?? false,
         faturamento: {
           id: faturamentoId,
           nome_campanha: nomeCampanha,
@@ -321,6 +328,7 @@ export function FaturamentoPipelineContent({
         isRevisor={isRevisor}
         selectedEtapaNum={selectedEtapa}
         onSelectEtapa={setSelectedEtapa}
+        etapa1HasPending={hasPendingSends}
       />
 
       <ValorCardsRow v={valorCards} />

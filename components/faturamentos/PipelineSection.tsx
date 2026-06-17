@@ -21,6 +21,7 @@ interface Props {
   isRevisor: boolean;
   selectedEtapaNum?: number | null;
   onSelectEtapa?: (num: number) => void;
+  etapa1HasPending?: boolean;
 }
 
 const STATUS_STYLE: Record<EtapaStatus, { ring: string; bg: string; text: string }> = {
@@ -30,7 +31,7 @@ const STATUS_STYLE: Record<EtapaStatus, { ring: string; bg: string; text: string
   pendente:        { ring: '#E2E8F0', bg: 'white',   text: '#94A3B8' },
 };
 
-export function PipelineSection({ faturamentoId, etapas: etapasInit, isRevisor, selectedEtapaNum, onSelectEtapa }: Props) {
+export function PipelineSection({ faturamentoId, etapas: etapasInit, isRevisor, selectedEtapaNum, onSelectEtapa, etapa1HasPending }: Props) {
   const router = useRouter();
   const [etapas, setEtapas]             = useState<Etapa[]>(etapasInit);
   const [loading, setLoading]           = useState(false);
@@ -172,6 +173,7 @@ export function PipelineSection({ faturamentoId, etapas: etapasInit, isRevisor, 
             isLast={i === etapas.length - 1}
             isSelected={selectedEtapaNum === etapa.numero}
             onSelect={onSelectEtapa ? () => onSelectEtapa(etapa.numero) : undefined}
+            forceAmbar={etapa.numero === 1 && !!etapa1HasPending && etapa.status === 'concluida'}
           />
         ))}
       </div>
@@ -247,22 +249,24 @@ export function PipelineSection({ faturamentoId, etapas: etapasInit, isRevisor, 
 // ── EtapaCircle ────────────────────────────────────────────────────────────────
 
 function EtapaCircle({
-  etapa, isLast, isSelected, onSelect,
+  etapa, isLast, isSelected, onSelect, forceAmbar,
 }: {
   etapa: Etapa;
   isLast: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
+  forceAmbar?: boolean;
 }) {
-  const estaRetornado = etapa.status === 'em_andamento' && (etapa.retornos ?? 0) > 0;
-  const style = estaRetornado
+  const estaRetornado = !forceAmbar && etapa.status === 'em_andamento' && (etapa.retornos ?? 0) > 0;
+  const isAmbar = forceAmbar || estaRetornado;
+  const style = isAmbar
     ? { ring: '#D97706', bg: '#D97706', text: 'white' }
     : STATUS_STYLE[etapa.status];
   const icon =
-    etapa.status === 'concluida'      ? <Check         className="w-3.5 h-3.5 text-white" /> :
-    estaRetornado                     ? <AlertTriangle className="w-3.5 h-3.5 text-white" /> :
-    etapa.status === 'em_andamento'   ? <Clock         className="w-3.5 h-3.5 text-white" /> :
-    etapa.status === 'inconformidade' ? <AlertTriangle className="w-3.5 h-3.5 text-white" /> :
+    etapa.status === 'concluida' && !isAmbar ? <Check         className="w-3.5 h-3.5 text-white" /> :
+    isAmbar                                  ? <AlertTriangle className="w-3.5 h-3.5 text-white" /> :
+    etapa.status === 'em_andamento'          ? <Clock         className="w-3.5 h-3.5 text-white" /> :
+    etapa.status === 'inconformidade'        ? <AlertTriangle className="w-3.5 h-3.5 text-white" /> :
     null;
 
   return (
@@ -287,11 +291,11 @@ function EtapaCircle({
           className="text-xs text-center mt-1.5 max-w-[70px] leading-tight"
           style={{
             color:
-              isSelected                         ? '#2E60FF'  :
-              estaRetornado                      ? '#D97706' :
-              etapa.status === 'em_andamento'    ? '#00246D' :
-              etapa.status === 'concluida'        ? '#10B981' :
-              etapa.status === 'inconformidade'   ? '#EF4444' :
+              isSelected                        ? '#2E60FF'  :
+              isAmbar                           ? '#D97706' :
+              etapa.status === 'em_andamento'   ? '#00246D' :
+              etapa.status === 'concluida'      ? '#10B981' :
+              etapa.status === 'inconformidade' ? '#EF4444' :
               '#94A3B8',
             fontWeight: isSelected || etapa.status === 'em_andamento' ? 600 : 400,
           }}
@@ -310,7 +314,7 @@ function EtapaCircle({
       {!isLast && (
         <div
           className="h-0.5 w-10 mx-1 flex-shrink-0 mb-7"
-          style={{ backgroundColor: etapa.status === 'concluida' ? '#10B981' : '#E2E8F0' }}
+          style={{ backgroundColor: etapa.status === 'concluida' && !isAmbar ? '#10B981' : '#E2E8F0' }}
         />
       )}
     </div>
