@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdmin } from "@supabase/supabase-js";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { FaturamentoPipelineContent } from "@/components/faturamentos/FaturamentoPipelineContent";
 
@@ -28,7 +29,14 @@ export default async function FaturamentoDetailPage({
   const { data: { user } } = await supabase.auth.getUser();
   const isRevisor = user?.app_metadata?.role === "gestor" || user?.app_metadata?.role === "faturamento";
 
-  const { data: fat } = await supabase
+  // Admin client ignora RLS — necessário para buscar disparos (tabela sem policy para auth users)
+  const admin = createAdmin(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+
+  const { data: fat } = await admin
     .from("faturamentos")
     .select(`
       *,
@@ -69,14 +77,14 @@ export default async function FaturamentoDetailPage({
   const totalRepasse = repasseMidia + repasseProducao;
 
   // Fornecedores JA adicionados (para o modal de adicionar fornecedor)
-  const { data: ffIds } = await supabase
+  const { data: ffIds } = await admin
     .from("faturamento_fornecedores")
     .select("fornecedor_id")
     .eq("faturamento_id", id);
   const fornecedoresJaAdicionados = (ffIds ?? []).map((r: { fornecedor_id: string }) => r.fornecedor_id);
 
   // Certidões + documentos agência (empenhos, proposta, evidências, ofício)
-  const { data: certidoesData } = await supabase
+  const { data: certidoesData } = await admin
     .from("faturamento_certidoes")
     .select("id, tipo, label, arquivo_url, nome_arquivo, tamanho_bytes")
     .eq("faturamento_id", id)
