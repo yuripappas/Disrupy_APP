@@ -72,7 +72,7 @@ export function DeletarFaturamentoModal({
         .eq("id", faturamento.id);
       if (e5) throw e5;
 
-      router.push("/faturamentos");
+      onClose();
       router.refresh();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Erro ao excluir. Você tem permissão de gestor?";
