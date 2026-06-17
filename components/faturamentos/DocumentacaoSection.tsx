@@ -770,26 +770,27 @@ function FornecedorCard({
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
         const last = sorted[0];
-        if (!last) return null;
         const statusMap: Record<string, { label: string; bg: string; color: string; Icon: React.ElementType }> = {
-          enviado:    { label: "Enviado",     bg: "#ECFDF5", color: "#059669", Icon: CheckCircle },
-          agendado:   { label: "Agendado",    bg: "#FEF3C7", color: "#D97706", Icon: Calendar },
-          falhou:     { label: "Falhou",      bg: "#FEF2F2", color: "#DC2626", Icon: XCircle },
-          nao_enviado:{ label: "Não enviado", bg: "#F1F5F9", color: "#94A3B8", Icon: Clock },
+          enviado:    { label: "Enviado",      bg: "#ECFDF5", color: "#059669", Icon: CheckCircle },
+          agendado:   { label: "Agendado",     bg: "#FEF3C7", color: "#D97706", Icon: Calendar },
+          falhou:     { label: "Falhou",       bg: "#FEF2F2", color: "#DC2626", Icon: XCircle },
         };
-        const sCfg = statusMap[last.status] ?? statusMap.nao_enviado;
+        const sCfg = last ? (statusMap[last.status] ?? { label: last.status, bg: "#F1F5F9", color: "#94A3B8", Icon: Clock })
+                          : { label: "Não enviado", bg: "#F1F5F9", color: "#94A3B8", Icon: Clock };
         const { Icon: SIcon } = sCfg;
         return (
           <div className="flex items-center justify-between px-5 py-2.5 gap-3"
             style={{ borderBottom: "1px solid #F1F5F9", backgroundColor: "#FAFBFC" }}>
             <div className="flex items-center gap-2 min-w-0">
               <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#94A3B8" }} />
-              <span className="text-xs" style={{ color: "#64748B" }}>
-                Último disparo: <span className="font-medium">{subtipoLabel(last.subtipo)}</span>
-                {last.enviado_em && (
-                  <> · {formatarDataHora(last.enviado_em)}</>
-                )}
-              </span>
+              {last ? (
+                <span className="text-xs" style={{ color: "#64748B" }}>
+                  Último disparo: <span className="font-medium">{subtipoLabel(last.subtipo)}</span>
+                  {last.enviado_em && <> · {formatarDataHora(last.enviado_em)}</>}
+                </span>
+              ) : (
+                <span className="text-xs" style={{ color: "#94A3B8" }}>Nenhum disparo enviado</span>
+              )}
               <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
                 style={{ backgroundColor: sCfg.bg, color: sCfg.color }}>
                 <SIcon className="w-3 h-3" />{sCfg.label}
