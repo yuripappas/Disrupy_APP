@@ -72,14 +72,15 @@ export async function POST(
         .eq('id', proxima.id);
     }
 
-    // Atualiza slug no faturamento
+    // Atualiza slug e etapa_atual no faturamento
     const novoSlug = proxima ? (ETAPA_SLUG[proxima.numero] ?? 'concluido') : 'concluido';
+    const novaEtapaNum = proxima?.numero ?? atual.numero;
     await supabase
       .from('faturamentos')
-      .update({ etapa: novoSlug, updated_at: new Date().toISOString() })
+      .update({ etapa: novoSlug, etapa_atual: novaEtapaNum, updated_at: new Date().toISOString() })
       .eq('id', id);
 
-    return NextResponse.json({ ok: true, novaEtapa: proxima?.numero ?? null, slug: novoSlug });
+    return NextResponse.json({ ok: true, novaEtapa: novaEtapaNum, slug: novoSlug });
   }
 
   // ── VOLTAR ────────────────────────────────────────────────────────────────────
@@ -108,11 +109,11 @@ export async function POST(
       .update({ status: 'em_andamento', retornos: (antData?.retornos ?? 0) + 1 })
       .eq('id', anterior.id);
 
-    // Atualiza slug no faturamento
+    // Atualiza slug e etapa_atual no faturamento
     const slug = ETAPA_SLUG[anterior.numero] ?? 'rascunho';
     await supabase
       .from('faturamentos')
-      .update({ etapa: slug, updated_at: new Date().toISOString() })
+      .update({ etapa: slug, etapa_atual: anterior.numero, updated_at: new Date().toISOString() })
       .eq('id', id);
 
     return NextResponse.json({ ok: true, novaEtapa: anterior.numero, slug });

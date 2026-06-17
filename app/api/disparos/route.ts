@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
             .eq('id', etapa2.id);
         }
         await admin.from('faturamentos')
-          .update({ etapa: 'aguardando_docs', updated_at: agora })
+          .update({ etapa: 'aguardando_docs', etapa_atual: 2, updated_at: agora })
           .eq('id', faturamentoId);
       }
     }
