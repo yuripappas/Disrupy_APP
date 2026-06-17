@@ -678,70 +678,72 @@ function DocRow({
             </p>
           )}
 
-          {/* Seção de link externo — para arquivos grandes */}
-          <div>
-            <button
-              type="button"
-              onClick={() => { setLinkMode((v) => !v); setLinkErro(null); }}
-              className="flex items-center justify-center gap-1.5 w-full py-1.5 text-xs"
-              style={{ color: "#64748B" }}
-            >
-              <Link2 className="w-3 h-3" />
-              Arquivo grande? Cole um link
-              <ChevronDown className="w-3 h-3 transition-transform" style={{ transform: linkMode ? "rotate(180deg)" : "rotate(0deg)" }} />
-            </button>
+          {/* Seção de link externo — apenas para evidências (vídeos de produção) */}
+          {doc.tipo === "evidencia" && (
+            <div>
+              <button
+                type="button"
+                onClick={() => { setLinkMode((v) => !v); setLinkErro(null); }}
+                className="flex items-center justify-center gap-1.5 w-full py-1.5 text-xs"
+                style={{ color: "#64748B" }}
+              >
+                <Link2 className="w-3 h-3" />
+                Arquivo grande? Cole um link
+                <ChevronDown className="w-3 h-3 transition-transform" style={{ transform: linkMode ? "rotate(180deg)" : "rotate(0deg)" }} />
+              </button>
 
-            {linkMode && (
-              <div className="mt-2 rounded-lg border p-3 space-y-2" style={{ borderColor: "#E2E8F0", backgroundColor: "#F8FAFC" }}>
-                <p className="text-xs" style={{ color: "#64748B" }}>
-                  Suba o arquivo no Google Drive (ou WeTransfer, Dropbox...), copie o link compartilhável e cole aqui.
-                </p>
-                <input
-                  type="url"
-                  autoFocus
-                  value={linkUrl}
-                  onChange={(e) => { setLinkUrl(e.target.value); setLinkErro(null); }}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleSalvarLink(); }}
-                  placeholder="https://drive.google.com/file/..."
-                  className="w-full px-3 py-2 text-xs rounded-lg border outline-none"
-                  style={{ borderColor: "#CBD5E1", color: "#0F172A", backgroundColor: "#fff" }}
-                />
-                <input
-                  type="text"
-                  value={linkNome}
-                  onChange={(e) => setLinkNome(e.target.value)}
-                  placeholder="Nome do arquivo (opcional)"
-                  className="w-full px-3 py-2 text-xs rounded-lg border outline-none"
-                  style={{ borderColor: "#CBD5E1", color: "#0F172A", backgroundColor: "#fff" }}
-                />
-                {linkErro && (
-                  <p className="text-xs flex items-center gap-1" style={{ color: "#DC2626" }}>
-                    <AlertTriangle className="w-3 h-3" /> {linkErro}
+              {linkMode && (
+                <div className="mt-2 rounded-lg border p-3 space-y-2" style={{ borderColor: "#E2E8F0", backgroundColor: "#F8FAFC" }}>
+                  <p className="text-xs" style={{ color: "#64748B" }}>
+                    Suba o arquivo no Google Drive (ou WeTransfer, Dropbox...), copie o link compartilhável e cole aqui.
                   </p>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSalvarLink}
-                    disabled={savingLink || !linkUrl.trim()}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold text-white"
-                    style={{ backgroundColor: savingLink || !linkUrl.trim() ? "#94A3B8" : "#2E60FF" }}
-                  >
-                    {savingLink ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                    {savingLink ? "Salvando..." : "Salvar link"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setLinkMode(false); setLinkUrl(""); setLinkNome(""); setLinkErro(null); }}
-                    className="px-3 py-2 rounded-lg text-xs border"
-                    style={{ borderColor: "#E2E8F0", color: "#64748B" }}
-                  >
-                    Cancelar
-                  </button>
+                  <input
+                    type="url"
+                    autoFocus
+                    value={linkUrl}
+                    onChange={(e) => { setLinkUrl(e.target.value); setLinkErro(null); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleSalvarLink(); }}
+                    placeholder="https://drive.google.com/file/..."
+                    className="w-full px-3 py-2 text-xs rounded-lg border outline-none"
+                    style={{ borderColor: "#CBD5E1", color: "#0F172A", backgroundColor: "#fff" }}
+                  />
+                  <input
+                    type="text"
+                    value={linkNome}
+                    onChange={(e) => setLinkNome(e.target.value)}
+                    placeholder="Nome do arquivo (opcional)"
+                    className="w-full px-3 py-2 text-xs rounded-lg border outline-none"
+                    style={{ borderColor: "#CBD5E1", color: "#0F172A", backgroundColor: "#fff" }}
+                  />
+                  {linkErro && (
+                    <p className="text-xs flex items-center gap-1" style={{ color: "#DC2626" }}>
+                      <AlertTriangle className="w-3 h-3" /> {linkErro}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSalvarLink}
+                      disabled={savingLink || !linkUrl.trim()}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold text-white"
+                      style={{ backgroundColor: savingLink || !linkUrl.trim() ? "#94A3B8" : "#2E60FF" }}
+                    >
+                      {savingLink ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                      {savingLink ? "Salvando..." : "Salvar link"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setLinkMode(false); setLinkUrl(""); setLinkNome(""); setLinkErro(null); }}
+                      className="px-3 py-2 rounded-lg text-xs border"
+                      style={{ borderColor: "#E2E8F0", color: "#64748B" }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
