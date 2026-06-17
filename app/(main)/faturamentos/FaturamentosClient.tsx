@@ -2,35 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, FileSpreadsheet, ChevronRight, Clock, FileText, Trash2 } from "lucide-react";
+import { Plus, FileSpreadsheet, ChevronRight, FileText, Trash2 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { NovoFaturamentoModal } from "@/components/faturamentos/NovoFaturamentoModal";
 import { ImportarIClipsModal } from "@/components/faturamentos/ImportarIClipsModal";
 import { DeletarFaturamentoModal } from "@/components/faturamentos/DeletarFaturamentoModal";
 
-const statusLabel: Record<string, string> = {
-  aguardando_inicio: "Aguardando Início",
-  docs_fornecedores: "Docs. Fornecedores",
-  revisao_docs: "Revisão de Docs.",
-  docs_agencia: "Docs. Agência",
-  revisao_processo: "Revisão do Processo",
-  publicacao: "Publicação",
-  aguardando_validacao: "Aguardando Validação",
-  concluido: "Concluído",
-  cancelado: "Cancelado",
-};
-
-const statusColor: Record<string, { bg: string; text: string }> = {
-  aguardando_inicio: { bg: "#F1F5F9", text: "#64748B" },
-  docs_fornecedores: { bg: "#EEF2FF", text: "#2E60FF" },
-  revisao_docs: { bg: "#FFFBEB", text: "#D97706" },
-  docs_agencia: { bg: "#F5F3FF", text: "#7C3AED" },
-  revisao_processo: { bg: "#FFFBEB", text: "#D97706" },
-  publicacao: { bg: "#ECFDF5", text: "#059669" },
-  aguardando_validacao: { bg: "#F0FDFA", text: "#0891B2" },
-  concluido: { bg: "#ECFDF5", text: "#059669" },
-  cancelado: { bg: "#FEF2F2", text: "#DC2626" },
-};
 
 const clienteTipo: Record<string, { label: string; color: string }> = {
   governo_al: { label: "Governo AL", color: "#00246D" },
@@ -107,7 +84,6 @@ export function FaturamentosClient({ faturamentos, isGestor }: { faturamentos: F
         <div className="space-y-3">
           {faturamentos.map((fat) => {
             const tipo = clienteTipo[fat.cliente_tipo] ?? { label: fat.cliente_tipo, color: "#64748B" };
-            const status = statusColor[fat.status] ?? { bg: "#F1F5F9", text: "#64748B" };
             return (
               <Link key={fat.id} href={`/faturamentos/${fat.id}`}
                 className="block rounded-xl border bg-white p-5 hover:shadow-sm transition-all duration-150 group"
@@ -132,10 +108,6 @@ export function FaturamentosClient({ faturamentos, isGestor }: { faturamentos: F
                     </div>
                   </div>
                   <div className="flex-shrink-0 text-right">
-                    <div className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md mb-3" style={{ backgroundColor: status.bg, color: status.text }}>
-                      {fat.status === "aguardando_inicio" && <Clock className="w-3 h-3" />}
-                      {statusLabel[fat.status] ?? fat.status}
-                    </div>
                     <p className="text-xl font-bold" style={{ color: "#0F172A" }}>{formatCurrency(fat.valor_total)}</p>
                     <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>Atualizado {formatDate(fat.updated_at)}</p>
                     <div className="mt-3 flex items-center justify-end gap-3">
