@@ -162,11 +162,25 @@ function RowStatusBadge({ status }: { status: RowStatus }) {
 
 // ── UltimoDisparoCel ──────────────────────────────────────────────────────────
 
+const SUBTIPO_LABEL: Record<string, string> = {
+  link_inicial: "Link Inicial",
+  lembrete_1:   "Lembrete 1",
+  lembrete_2:   "Lembrete 2",
+  lembrete_3:   "Lembrete 3",
+  lembrete_4:   "Lembrete 4",
+  confirmacao:  "Confirmação",
+  divergencia:  "Divergência",
+};
+
 function UltimoDisparoCel({ row }: { row: ComputedRow }) {
   const disparos = row.disparos ?? [];
 
   const waSent   = disparos.some((d) => d.tipo !== "email" && d.status === "enviado");
   const mailSent = disparos.some((d) => d.tipo === "email" && d.status === "enviado");
+
+  const stageLabel = row.ultimoDisparo?.subtipo
+    ? (SUBTIPO_LABEL[row.ultimoDisparo.subtipo] ?? row.ultimoDisparo.subtipo)
+    : null;
 
   const DispStatusBadge = () => {
     const cfg = {
@@ -186,11 +200,18 @@ function UltimoDisparoCel({ row }: { row: ComputedRow }) {
 
   return (
     <div className="space-y-1.5">
-      <DispStatusBadge />
+      {stageLabel ? (
+        <p className="text-xs font-semibold" style={{ color: "#0F172A" }}>{stageLabel}</p>
+      ) : (
+        <DispStatusBadge />
+      )}
       {row.ultimoDisparo && (
-        <p className="text-xs" style={{ color: "#94A3B8" }}>
-          {formatDt(row.ultimoDisparo.enviado_em ?? row.ultimoDisparo.agendado_para ?? row.ultimoDisparo.created_at)}
-        </p>
+        <>
+          {stageLabel && <DispStatusBadge />}
+          <p className="text-xs" style={{ color: "#94A3B8" }}>
+            {formatDt(row.ultimoDisparo.enviado_em ?? row.ultimoDisparo.agendado_para ?? row.ultimoDisparo.created_at)}
+          </p>
+        </>
       )}
       {/* Canais */}
       <div className="flex items-center gap-2">
@@ -586,7 +607,7 @@ function EnviarParaTodosButton({
           style={{ backgroundColor: "#00246D", color: "white" }}
         >
           <Send className="w-3.5 h-3.5" />
-          Enviar para todos ({pendentes.length} pendentes)
+          Enviar para todos ({rows.length})
         </button>
       )}
       {estado === "enviando" && (
