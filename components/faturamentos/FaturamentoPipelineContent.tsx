@@ -32,6 +32,9 @@ interface FornecedorNf {
   valorNf: string | null;
   numeroNf: string | null;
   nfStatus: string | null;
+  tipo: "midia" | "producao";
+  honorarios: number;
+  numeroOsPi: string | null;
 }
 
 interface Certidao {
@@ -61,6 +64,7 @@ interface Props {
   nomeCampanha: string;
   jobId: string | null;
   propostaId: string | null;
+  empenho: string | null;
   clienteTipo: string;
   clienteNome: string;
   etapas: Etapa[];
@@ -146,7 +150,7 @@ function ValorCardsRow({ v }: { v: ValorCards }) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export function FaturamentoPipelineContent({
-  faturamentoId, nomeCampanha, jobId, propostaId, clienteTipo, clienteNome,
+  faturamentoId, nomeCampanha, jobId, propostaId, empenho, clienteTipo, clienteNome,
   etapas, isRevisor, fornecedores, custosInternos,
   fornecedoresNf, certidoesIniciais, fornecedoresJaAdicionados, valorCards,
 }: Props) {
@@ -242,10 +246,12 @@ export function FaturamentoPipelineContent({
             nomeCampanha={nomeCampanha}
             jobId={jobId}
             propostaId={propostaId}
+            empenho={empenho}
             clienteTipo={clienteTipo}
             clienteNome={clienteNome}
             fornecedoresNf={fornecedoresNf}
             certidoesIniciais={certidoesIniciais}
+            valorCustosInternos={valorCards.valorCustosInternos}
           />
         );
 

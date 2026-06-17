@@ -36,7 +36,7 @@ export default async function FaturamentoDetailPage({
       faturamento_custos_internos ( id, codigo, servico, qtde, valor_unitario, valor_total ),
       faturamento_fornecedores (
         id, valor, honorarios, valor_total, prazo_dias, status, link_token,
-        nome_iclips, associado, tipo_iclips, envio_inicial_em,
+        nome_iclips, associado, tipo_iclips, envio_inicial_em, numero_os_pi,
         fornecedor:fornecedores ( id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp, contato_email ),
         documentos ( id, tipo, label, status, arquivo_url, reprovacao_motivo,
           numero_nf, numero_nf_status, valor_nf,
@@ -97,6 +97,9 @@ export default async function FaturamentoDetailPage({
         valorNf:     nfDoc.valor_nf ?? null,
         numeroNf:    nfDoc.numero_nf ?? null,
         nfStatus:    nfDoc.numero_nf_status ?? null,
+        tipo:        (f.fornecedor?.tipo ?? f.tipo_iclips ?? "producao") as "midia" | "producao",
+        honorarios:  f.honorarios ?? 0,
+        numeroOsPi:  f.numero_os_pi ?? null,
       }];
     });
 
@@ -152,6 +155,7 @@ export default async function FaturamentoDetailPage({
         nomeCampanha={fat.nome_campanha}
         jobId={fat.iclips_job_id ?? null}
         propostaId={fat.iclips_proposta_id ?? null}
+        empenho={fat.empenho ?? null}
         clienteTipo={fat.cliente_tipo}
         clienteNome={fat.cliente_nome}
         etapas={etapas}

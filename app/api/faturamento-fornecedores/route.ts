@@ -63,6 +63,41 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
+// PUT /api/faturamento-fornecedores
+// Atualiza o número de OS/PI de um fornecedor no faturamento
+// Body: { ffId: string, numeroOsPi: string }
+export async function PUT(req: NextRequest) {
+  const supabase = await createClient();
+
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !user) {
+    return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  }
+
+  const role = user.app_metadata?.role;
+  if (role !== "gestor" && role !== "faturamento") {
+    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  }
+
+  const body = await req.json();
+  const { ffId, numeroOsPi } = body as { ffId: string; numeroOsPi: string };
+
+  if (!ffId) {
+    return NextResponse.json({ error: "ffId é obrigatório" }, { status: 400 });
+  }
+
+  const { error: updateErr } = await supabase
+    .from("faturamento_fornecedores")
+    .update({ numero_os_pi: numeroOsPi ?? null })
+    .eq("id", ffId);
+
+  if (updateErr) {
+    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
 // DELETE /api/faturamento-fornecedores?id=ffId
 // Remove um fornecedor de um faturamento (apenas gestores e faturamento)
 export async function DELETE(req: NextRequest) {
