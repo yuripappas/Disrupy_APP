@@ -430,6 +430,7 @@ export function ImportarIClipsModal({ open, onClose }: { open: boolean; onClose:
         tipo_iclips: tipoIclips,
         valor: f.valor, honorarios: f.honorarios_editavel, valor_total: f.valor_total_editavel,
         prazo_dias: parseInt(prazo) || 5, status: "aguardando",
+        numero_os_pi: f.kind === "midia" ? ((f as MidiaGrupo).codigo ?? null) : null,
       }).select().single();
       if (!ff) continue;
       const docs = f.kind === "midia" ? DOCS_MIDIA : DOCS_PRODUCAO;

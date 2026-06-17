@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronUp, FileText, ExternalLink,
   CheckCircle, XCircle, Clock, Check, X, Loader2,
   Copy, Link2, AlertTriangle, Search, Film, Send, Calendar,
-  UserPlus, Phone, Mail, User, MessageSquare, Upload,
+  UserPlus, Phone, Mail, User, MessageSquare, Upload, Edit2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeName } from "@/lib/iclips/parser";
@@ -75,6 +75,7 @@ type FF = {
   nome_iclips: string | null;
   associado: boolean | null;
   tipo_iclips: string | null;
+  numero_os_pi?: string | null;
   orcamentos_internos_habilitado?: boolean;
   fornecedor: FornecedorEmbed | null;
   documentos: Documento[];
@@ -652,6 +653,13 @@ function FornecedorCard({
   // Cadência de disparos
   const [cadenciaAberta, setCadenciaAberta]   = useState(false);
 
+  // OS / PI inline
+  const [osPiLocal, setOsPiLocal]       = useState<string | null>(ff.numero_os_pi ?? null);
+  const [editandoOsPi, setEditandoOsPi] = useState(false);
+  const [osPiInput, setOsPiInput]       = useState(ff.numero_os_pi ?? "");
+  const [salvandoOsPi, setSalvandoOsPi] = useState(false);
+  const [erroOsPi, setErroOsPi]         = useState<string | null>(null);
+
   // Contato inline (quando fornecedor não tem WhatsApp)
   const [fornecedorLocal, setFornecedorLocal] = useState(ff.fornecedor!);
   const [adicionandoContato, setAdicionandoContato] = useState(false);
@@ -662,6 +670,22 @@ function FornecedorCard({
     contato_whatsapp: ff.fornecedor?.contato_whatsapp ?? "",
     contato_email:    ff.fornecedor?.contato_email    ?? "",
   });
+
+  async function handleSalvarOsPi() {
+    setSalvandoOsPi(true); setErroOsPi(null);
+    const res = await fetch("/api/faturamento-fornecedores", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ffId: ff.id, numeroOsPi: osPiInput.trim() || null }),
+    });
+    setSalvandoOsPi(false);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({})) as { error?: string };
+      setErroOsPi(j.error ?? "Erro ao salvar"); return;
+    }
+    setOsPiLocal(osPiInput.trim() || null);
+    setEditandoOsPi(false);
+  }
 
   async function salvarContato() {
     setSalvandoContato(true);
@@ -687,7 +711,9 @@ function FornecedorCard({
     setAdicionandoContato(false);
   }
 
-  const fornecedor = fornecedorLocal;
+  const fornecedor    = fornecedorLocal;
+  const tipoForn      = fornecedor.tipo ?? ff.tipo_iclips;
+  const osPiLabel     = tipoForn === "midia" ? "PI" : "OS";
   const completos = ff.documentos.filter((d) => d.status === "aprovado" || d.status === "enviado").length;
   const total     = ff.documentos.length;
   const pct       = total > 0 ? Math.round((completos / total) * 100) : 0;
@@ -748,6 +774,50 @@ function FornecedorCard({
           <p className="text-xs mt-0.5" style={{ color: "#94A3B8" }}>
             {fornecedor.cnpj}{fornecedor.contato_nome ? ` · ${fornecedor.contato_nome}` : ""}
           </p>
+          {/* OS / PI inline */}
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <span className="text-xs font-bold px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: "#EEF2FF", color: "#2E60FF", letterSpacing: "0.04em" }}>
+              {osPiLabel}
+            </span>
+            {editandoOsPi ? (
+              <>
+                <input
+                  autoFocus type="text" value={osPiInput}
+                  onChange={(e) => setOsPiInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSalvarOsPi();
+                    if (e.key === "Escape") { setEditandoOsPi(false); setOsPiInput(osPiLocal ?? ""); setErroOsPi(null); }
+                  }}
+                  placeholder={`Nº ${osPiLabel}`}
+                  className="text-xs px-2 py-0.5 rounded-lg border outline-none font-mono w-24"
+                  style={{ borderColor: "#2E60FF", color: "#0F172A" }}
+                />
+                <button onClick={handleSalvarOsPi} disabled={salvandoOsPi}
+                  className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg font-medium text-white"
+                  style={{ backgroundColor: salvandoOsPi ? "#94A3B8" : "#2E60FF" }}>
+                  {salvandoOsPi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                  {salvandoOsPi ? "…" : "OK"}
+                </button>
+                <button onClick={() => { setEditandoOsPi(false); setOsPiInput(osPiLocal ?? ""); setErroOsPi(null); }}
+                  className="text-xs" style={{ color: "#94A3B8" }}>✕</button>
+                {erroOsPi && <span className="text-xs" style={{ color: "#DC2626" }}>{erroOsPi}</span>}
+              </>
+            ) : (
+              <>
+                <span className="text-xs font-mono" style={{ color: osPiLocal ? "#0F172A" : "#CBD5E1" }}>
+                  {osPiLocal || "—"}
+                </span>
+                {isRevisor && (
+                  <button onClick={() => { setEditandoOsPi(true); setOsPiInput(osPiLocal ?? ""); }}
+                    className="flex items-center gap-1 text-xs" style={{ color: "#94A3B8" }}
+                    title={`Editar ${osPiLabel}`}>
+                    <Edit2 className="w-3 h-3" />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
         <div className="text-right">
           <p className="text-lg font-bold" style={{ color: "#0F172A" }}>{formatCurrency(ff.valor_total)}</p>

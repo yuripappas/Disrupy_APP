@@ -30,6 +30,7 @@ export type OrcamentoGrupo = {
 export type MidiaGrupo = {
   nome_veiculo: string;
   tipo_midia: string;
+  codigo?: string;        // PI — coluna Código da aba Mídias
   valor: number;          // soma Valor da Mídia
   honorarios: number;     // 20% default (editável)
   valor_total: number;
@@ -144,13 +145,18 @@ export function parseIClipsXlsx(buffer: ArrayBuffer): IClipsProposta {
   for (let i = 1; i < midRows.length; i++) {
     const row = midRows[i] as unknown[];
     if (!row || !row[2]) continue;
+    const codigo      = s(row[0]);  // PI — coluna Código (col A)
     const tipo_midia  = s(row[1]);
     const nomeVeiculo = s(row[2]);
     const valorMidia  = n(row[5]);
     if (!nomeVeiculo) continue;
 
     if (!midMap.has(nomeVeiculo)) {
-      midMap.set(nomeVeiculo, { nome_veiculo: nomeVeiculo, tipo_midia, valor: 0, honorarios: 0, valor_total: 0 });
+      midMap.set(nomeVeiculo, {
+        nome_veiculo: nomeVeiculo, tipo_midia,
+        codigo: codigo || undefined,
+        valor: 0, honorarios: 0, valor_total: 0,
+      });
     }
     const entry = midMap.get(nomeVeiculo)!;
     entry.valor = Math.round((entry.valor + valorMidia) * 100) / 100;
