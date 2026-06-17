@@ -284,7 +284,7 @@ function OrcamentosPanel({
 
   return (
     <tr style={{ borderBottom: "1px solid #E2E8F0", backgroundColor: "#F8FAFC" }}>
-      <td colSpan={6} className="px-5 py-3">
+      <td colSpan={7} className="px-5 py-3">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-semibold" style={{ color: "#334155" }}>
@@ -335,6 +335,8 @@ function Row({
   onToggle,
   onOsPiChange,
   onContatoChange,
+  selected,
+  onSelect,
 }: {
   row: ComputedRow;
   onAtualizar: (ffId: string, disparo: DisparoRecord) => void;
@@ -343,6 +345,8 @@ function Row({
   onToggle: (ffId: string, enabled: boolean) => void;
   onOsPiChange: (ffId: string, value: string | null) => void;
   onContatoChange: (ffId: string, contato: { contato_nome: string | null; contato_whatsapp: string | null; contato_email: string | null }) => void;
+  selected: boolean;
+  onSelect: (ffId: string, checked: boolean) => void;
 }) {
   const [enviando, setEnviando]         = useState(false);
   const [agendando, setAgendando]       = useState(false);
@@ -527,43 +531,53 @@ function Row({
         className="transition-colors"
         style={{
           borderBottom: "1px solid #F1F5F9",
-          backgroundColor: semContato ? "#FFFBEB" : isRespondeu ? "#F0FDF4" : undefined,
+          backgroundColor: semContato ? "#FFFBEB" : isRespondeu ? "#F0FDF4" : row.dispStatus === "enviado" ? "#F0F9FF" : undefined,
         }}
       >
+        {/* Checkbox */}
+        <td className="px-3 py-3.5">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(e) => onSelect(row.id, e.target.checked)}
+            disabled={semContato}
+            className="w-4 h-4 rounded accent-blue-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+            title={semContato ? "Adicione contato para selecionar" : "Selecionar fornecedor"}
+          />
+        </td>
         {/* Fornecedor */}
         <td className="px-5 py-3.5">
           <p className="text-sm font-medium" style={{ color: "#0F172A" }}>{row.fornecedor.razao_social}</p>
 
-          {/* Alerta: dados de contato faltando */}
-          {semContato && (
-            <div className="flex items-center gap-1 mt-1">
-              <AlertTriangle className="w-3 h-3 flex-shrink-0" style={{ color: "#D97706" }} />
-              <span className="text-xs font-medium" style={{ color: "#D97706" }}>Dados de contato incompletos</span>
-            </div>
-          )}
-
-          {/* Exibição do contato atual */}
-          {!semContato && (
-            <div className="mt-0.5">
-              {contatoLocal.nome && (
-                <p className="text-xs" style={{ color: "#334155" }}>{contatoLocal.nome}</p>
-              )}
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-                {contatoLocal.wa && (
-                  <div className="flex items-center gap-1">
-                    <Phone className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
-                    <span className="text-xs font-mono" style={{ color: "#64748B" }}>{contatoLocal.wa}</span>
-                  </div>
-                )}
-                {contatoLocal.email && (
-                  <div className="flex items-center gap-1">
-                    <Mail className="w-3 h-3 flex-shrink-0" style={{ color: "#94A3B8" }} />
-                    <span className="text-xs" style={{ color: "#64748B" }}>{contatoLocal.email}</span>
-                  </div>
-                )}
+          {/* Contato com sinalização por campo */}
+          <div className="mt-0.5 space-y-0.5">
+            {contatoLocal.nome ? (
+              <p className="text-xs" style={{ color: "#334155" }}>{contatoLocal.nome}</p>
+            ) : (
+              <div className="flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 flex-shrink-0" style={{ color: "#D97706" }} />
+                <span className="text-xs" style={{ color: "#D97706" }}>Nome ausente</span>
               </div>
+            )}
+            <div className="flex items-center gap-1">
+              <Phone className="w-3 h-3 flex-shrink-0" style={{ color: contatoLocal.wa ? "#94A3B8" : "#D97706" }} />
+              {contatoLocal.wa ? (
+                <span className="text-xs font-mono" style={{ color: "#64748B" }}>{contatoLocal.wa}</span>
+              ) : (
+                <span className="text-xs font-medium" style={{ color: "#D97706" }}>WhatsApp ausente</span>
+              )}
             </div>
-          )}
+            <div className="flex items-center gap-1">
+              <Mail className="w-3 h-3 flex-shrink-0" style={{ color: contatoLocal.email ? "#94A3B8" : semContato ? "#D97706" : "#CBD5E1" }} />
+              {contatoLocal.email ? (
+                <span className="text-xs" style={{ color: "#64748B" }}>{contatoLocal.email}</span>
+              ) : (
+                <span className="text-xs" style={{ color: semContato ? "#D97706" : "#94A3B8" }}>
+                  {semContato ? "E-mail ausente" : "Sem e-mail"}
+                </span>
+              )}
+            </div>
+          </div>
 
           {/* Botão editar / adicionar contato */}
           <button
@@ -780,7 +794,7 @@ function Row({
       {/* Edição de contato inline */}
       {editandoContato && (
         <tr style={{ borderBottom: "1px solid #F1F5F9", backgroundColor: semContato ? "#FFFBEB" : "#F8FAFC" }}>
-          <td colSpan={6} className="px-5 py-3">
+          <td colSpan={7} className="px-5 py-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex flex-col gap-0.5">
                 <label className="text-xs font-medium" style={{ color: "#64748B" }}>Nome do contato</label>
@@ -840,7 +854,7 @@ function Row({
       {/* Agendamento inline */}
       {mostrarAg && (
         <tr style={{ borderBottom: "1px solid #F1F5F9", backgroundColor: "#FFFBEB" }}>
-          <td colSpan={6} className="px-5 py-3">
+          <td colSpan={7} className="px-5 py-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium" style={{ color: "#92400E" }}>Agendar envio:</span>
               <input
@@ -897,17 +911,24 @@ function GroupHeader({ label, count }: { label: string; count: number }) {
 function EnviarParaTodosButton({
   rows,
   onAtualizar,
+  selectedIds,
+  onClearSelection,
 }: {
   rows: ComputedRow[];
   onAtualizar: (ffId: string, disparo: DisparoRecord) => void;
+  selectedIds: Set<string>;
+  onClearSelection: () => void;
 }) {
   const [estado, setEstado] = useState<"idle" | "enviando" | "concluido">("idle");
   const [progresso, setProgresso] = useState({ done: 0, total: 0, erros: 0 });
 
-  const pendentes = rows.filter((r) =>
-    (r.dispStatus === "nao_enviado" || r.dispStatus === "falhou") &&
-    (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email)
-  );
+  const temSelecao = selectedIds.size > 0;
+  const pendentes = temSelecao
+    ? rows.filter((r) => selectedIds.has(r.id) && (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email))
+    : rows.filter((r) =>
+        (r.dispStatus === "nao_enviado" || r.dispStatus === "falhou") &&
+        (r.fornecedor.contato_whatsapp || r.fornecedor.contato_email)
+      );
 
   async function enviarTodos() {
     if (pendentes.length === 0) return;
@@ -964,14 +985,21 @@ function EnviarParaTodosButton({
   return (
     <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: "1px solid #E2E8F0" }}>
       {estado === "idle" && (
-        <button
-          onClick={enviarTodos}
-          className="flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium transition-opacity hover:opacity-90"
-          style={{ backgroundColor: "#00246D", color: "white" }}
-        >
-          <Send className="w-3.5 h-3.5" />
-          Enviar para todos ({rows.length})
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={enviarTodos}
+            className="flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium transition-opacity hover:opacity-90"
+            style={{ backgroundColor: "#00246D", color: "white" }}
+          >
+            <Send className="w-3.5 h-3.5" />
+            {temSelecao ? `Enviar selecionados (${pendentes.length})` : `Enviar para todos (${pendentes.length})`}
+          </button>
+          {temSelecao && (
+            <button onClick={onClearSelection} className="text-xs" style={{ color: "#94A3B8" }}>
+              Limpar seleção
+            </button>
+          )}
+        </div>
       )}
       {estado === "enviando" && (
         <div className="flex items-center gap-3">
@@ -1019,6 +1047,7 @@ export function MonitoramentoClient({
   const [filtroStatus, setFiltroStatus] = useState("todos");
   const [busca, setBusca]           = useState("");
   const [cadenciaFfId, setCadenciaFfId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
 
   // Derived: sempre usa o ff atualizado de `ffs` — nunca um snapshot estático
   const cadenciaFf = useMemo(
@@ -1080,6 +1109,13 @@ export function MonitoramentoClient({
     );
   }
 
+  function handleSelect(ffId: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(ffId); else next.delete(ffId);
+      return next;
+    });
+  }
 
   const rows = useMemo(() => ffs.map(computeRow), [ffs]);
 
@@ -1124,6 +1160,15 @@ export function MonitoramentoClient({
       return true;
     });
   }, [rows, filtroFat, filtroStatus, busca]);
+
+  function handleSelectAll(checked: boolean) {
+    if (checked) {
+      const eligible = filtered.filter((r) => r.fornecedor.contato_whatsapp || r.fornecedor.contato_email);
+      setSelectedIds(new Set(eligible.map((r) => r.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  }
 
   // Agrupa por tipo
   const grupos = useMemo(() => {
@@ -1227,6 +1272,15 @@ export function MonitoramentoClient({
           <table className="w-full">
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
+                <th className="px-3 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={filtered.length > 0 && filtered.filter((r) => r.fornecedor.contato_whatsapp || r.fornecedor.contato_email).every((r) => selectedIds.has(r.id))}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                    title="Selecionar todos"
+                  />
+                </th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Fornecedor</th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Campanha</th>
                 <th className="text-left px-5 py-3 text-xs font-medium uppercase tracking-wide" style={{ color: "#64748B" }}>Valor</th>
@@ -1242,7 +1296,7 @@ export function MonitoramentoClient({
                     <GroupHeader key={`header-${tipo}`} label={tipoLabel(tipo)} count={grupoRows.length} />
                   )}
                   {grupoRows.map((row) => (
-                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} onToggle={handleToggle} onOsPiChange={handleOsPiChange} onContatoChange={handleContatoChange} />
+                    <Row key={row.id} row={row} onAtualizar={handleAtualizar} onCadencia={setCadenciaFfId} onRemover={onRemover ? handleRemover : undefined} onToggle={handleToggle} onOsPiChange={handleOsPiChange} onContatoChange={handleContatoChange} selected={selectedIds.has(row.id)} onSelect={handleSelect} />
                   ))}
                 </>
               ))}
@@ -1250,7 +1304,7 @@ export function MonitoramentoClient({
           </table>
 
           {/* Enviar para todos */}
-          <EnviarParaTodosButton rows={filtered} onAtualizar={handleAtualizar} />
+          <EnviarParaTodosButton rows={filtered} onAtualizar={handleAtualizar} selectedIds={selectedIds} onClearSelection={() => setSelectedIds(new Set())} />
         </div>
       )}
 

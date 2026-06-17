@@ -347,7 +347,7 @@ function StepRow({
             ffId={ffId}
             step={stepDef.step}
             disparoId={agendadoDsp?.id}
-            currentDate={dataValue}
+            currentDate={dataValue ?? (scheduledDate ? scheduledDate.toISOString() : null)}
             onSalvo={handleSalvoData}
             onCancelar={() => setEditando(false)}
           />
