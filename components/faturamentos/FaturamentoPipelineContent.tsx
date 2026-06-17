@@ -198,34 +198,6 @@ export function FaturamentoPipelineContent({
 
   function renderContent() {
     switch (selectedEtapa) {
-      case 1:
-        return (
-          <div>
-            <EtapaBanner
-              icon={Send}
-              title="Etapa 1 — Iniciar Faturamento"
-              descricao="Envie os links de documentação para cada fornecedor via WhatsApp. Use 'Enviar para todos' para agilizar. O primeiro envio libera automaticamente a revisão."
-            />
-            {isRevisor && (
-              <div className="flex justify-end mb-4">
-                <FaturamentoDetailClient
-                  faturamentoId={faturamentoId}
-                  fornecedoresJaAdicionados={fornecedoresJaAdicionados}
-                />
-              </div>
-            )}
-            {ffRows.length === 0 ? (
-              <div className="rounded-xl border p-12 text-center" style={{ borderColor: "#E2E8F0", borderStyle: "dashed" }}>
-                <p className="text-sm" style={{ color: "#94A3B8" }}>
-                  Nenhum fornecedor elegível. Verifique se os fornecedores têm WhatsApp cadastrado.
-                </p>
-              </div>
-            ) : (
-              <MonitoramentoClient ffs={ffRows} onRemover={isRevisor ? () => undefined : undefined} />
-            )}
-          </div>
-        );
-
       case 2:
         return (
           <div>
@@ -338,7 +310,34 @@ export function FaturamentoPipelineContent({
 
       <ValorCardsRow v={valorCards} />
 
-      {renderContent()}
+      {/* Etapa 1 permanece montada mesmo ao navegar para outras etapas,
+          preservando o estado dos disparos no MonitoramentoClient */}
+      <div style={{ display: selectedEtapa === 1 ? undefined : "none" }}>
+        <EtapaBanner
+          icon={Send}
+          title="Etapa 1 — Iniciar Faturamento"
+          descricao="Envie os links de documentação para cada fornecedor via WhatsApp. Use 'Enviar para todos' para agilizar. O primeiro envio libera automaticamente a revisão."
+        />
+        {isRevisor && (
+          <div className="flex justify-end mb-4">
+            <FaturamentoDetailClient
+              faturamentoId={faturamentoId}
+              fornecedoresJaAdicionados={fornecedoresJaAdicionados}
+            />
+          </div>
+        )}
+        {ffRows.length === 0 ? (
+          <div className="rounded-xl border p-12 text-center" style={{ borderColor: "#E2E8F0", borderStyle: "dashed" }}>
+            <p className="text-sm" style={{ color: "#94A3B8" }}>
+              Nenhum fornecedor elegível. Verifique se os fornecedores têm WhatsApp cadastrado.
+            </p>
+          </div>
+        ) : (
+          <MonitoramentoClient ffs={ffRows} onRemover={isRevisor ? () => undefined : undefined} />
+        )}
+      </div>
+
+      {selectedEtapa !== 1 && renderContent()}
     </div>
   );
 }
