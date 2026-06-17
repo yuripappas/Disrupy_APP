@@ -273,6 +273,7 @@ function InternalOrcUploadSlot({
               className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border-2 border-dashed text-xs"
               style={{ borderColor: "#CBD5E1", color: "#64748B" }}>
               <Upload className="w-3.5 h-3.5" /> Selecionar arquivo
+              <span className="text-xs" style={{ color: "#94A3B8", fontWeight: 400 }}>· Máx. 34 MB</span>
             </button>
           )}
           {erro && <p className="text-xs" style={{ color: "#DC2626" }}>⚠ {erro}</p>}

@@ -264,7 +264,7 @@ function DocRow({
 
   // Limite de 35 MB: base64 infla o arquivo em ~33%, e o Apps Script
   // rejeita payloads acima de ~50 MB antes mesmo de executar o código.
-  const MAX_FILE_BYTES = 35 * 1024 * 1024;
+  const MAX_FILE_BYTES = 34 * 1024 * 1024;
 
   function addFiles(fileList: FileList | File[]) {
     setGlobalError(null);
@@ -282,7 +282,7 @@ function DocRow({
             localId:  Math.random().toString(36).slice(2),
             file:     f,
             status:   "error" as const,
-            errorMsg: `Arquivo muito grande (${(f.size / 1024 / 1024).toFixed(0)} MB — máx 35 MB). ${dica}`,
+            errorMsg: `Arquivo muito grande (${(f.size / 1024 / 1024).toFixed(0)} MB — máx 34 MB). ${dica}`,
           };
         }
         return {
@@ -597,7 +597,7 @@ function DocRow({
                 : "Toque aqui ou arraste os arquivos"}
             </p>
             <p className="text-xs" style={{ color: "#CBD5E1" }}>
-              PDF, foto, vídeo, ZIP e outros formatos · máx 35 MB por arquivo
+              PDF, foto, vídeo, ZIP e outros formatos · Máx. 34 MB por arquivo
             </p>
           </label>
 
