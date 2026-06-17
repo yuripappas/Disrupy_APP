@@ -13,7 +13,7 @@ export default async function PortalPage({
   const { data: ff } = await supabase
     .from("faturamento_fornecedores")
     .select(
-      `id, status, prazo_dias, valor_total, link_token, orcamentos_internos_habilitado,
+      `id, status, prazo_dias, valor_total, link_token, orcamentos_internos_habilitado, numero_os_pi,
        fornecedor:fornecedores (razao_social, cnpj, tipo, contato_nome),
        faturamento:faturamentos (nome_campanha, cliente_nome, cliente_tipo, iclips_job_id, created_at),
        documentos (id, tipo, label, status, arquivo_url, reprovacao_motivo,

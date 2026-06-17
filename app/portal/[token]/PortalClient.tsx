@@ -182,6 +182,7 @@ type FF = {
   prazo_dias: number;
   valor_total: number;
   orcamentos_internos_habilitado: boolean;
+  numero_os_pi: string | null;
   fornecedor: { razao_social: string; cnpj: string | null; tipo: string; contato_nome: string | null };
   faturamento: FaturamentoInfo;
   documentos: Documento[];
@@ -861,6 +862,11 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
           </p>
           <h1 className="text-base font-bold"  style={{ color: "#0F172A" }}>{ff.faturamento.nome_campanha}</h1>
           <p className="text-sm mt-0.5"         style={{ color: "#64748B" }}>{ff.faturamento.cliente_nome}</p>
+          {ff.numero_os_pi && (
+            <p className="text-xs font-mono mt-1.5 font-semibold" style={{ color: "#2E60FF" }}>
+              {ff.fornecedor.tipo === "midia" ? "PI" : "OS"}: {ff.numero_os_pi}
+            </p>
+          )}
         </div>
 
         {/* Fornecedor */}
