@@ -2,12 +2,13 @@
 
 import { useState, useMemo } from "react";
 import {
-  Send, BookOpen, CheckCircle2, FileArchive, FileStack,
+  Send, BookOpen, CheckCircle2, FileArchive,
 } from "lucide-react";
 import { PipelineSection } from "@/components/faturamentos/PipelineSection";
 import { DocumentacaoSection } from "@/components/faturamentos/DocumentacaoSection";
 import { Etapa4Section } from "@/components/faturamentos/Etapa4Section";
 import { RevisaoProcessoSection } from "@/components/faturamentos/RevisaoProcessoSection";
+import { PublicacaoSection } from "@/components/faturamentos/PublicacaoSection";
 import { MonitoramentoClient, FFRow } from "@/components/disparos/MonitoramentoClient";
 import { FaturamentoDetailClient } from "@/app/(main)/faturamentos/[id]/FaturamentoDetailClient";
 import { formatCurrency } from "@/lib/utils";
@@ -266,18 +267,15 @@ export function FaturamentoPipelineContent({
             <EtapaBanner
               icon={FileArchive}
               title="Etapa 5 — Publicação"
-              descricao="Gere o PDF consolidado do processo e publique a documentação para envio ao cliente."
+              descricao="Revise a ordem final dos documentos e gere o PDF consolidado do processo para envio ao cliente."
             />
-            <div
-              className="rounded-xl border p-12 text-center"
-              style={{ borderColor: "#E2E8F0", borderStyle: "dashed" }}
-            >
-              <FileStack className="w-10 h-10 mx-auto mb-3" style={{ color: "#CBD5E1" }} />
-              <p className="text-sm font-medium mb-1" style={{ color: "#334155" }}>Geração de PDF em desenvolvimento</p>
-              <p className="text-xs" style={{ color: "#94A3B8" }}>
-                Em breve: gerar PDF consolidado do processo com a ordem definida na etapa anterior.
-              </p>
-            </div>
+            <PublicacaoSection
+              faturamentoId={faturamentoId}
+              nomeCampanha={nomeCampanha}
+              certidoesIniciais={certidoesIniciais}
+              fornecedores={fornecedores}
+              custosInternos={custosInternos}
+            />
           </div>
         );
 
