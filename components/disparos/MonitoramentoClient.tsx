@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Send, Clock, CheckCircle, XCircle, Calendar, Search,
   Loader2, MessageSquare, Phone, Mail, Filter, ExternalLink, GitBranch,
-  Users, Trash2, FileText, Edit2, AlertTriangle,
+  Users, Trash2, Edit2, AlertTriangle,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { CadenciaModal } from "./CadenciaModal";
@@ -354,7 +354,6 @@ function Row({
   const [enviando, setEnviando]         = useState(false);
   const [agendando, setAgendando]       = useState(false);
   const [mostrarAg, setMostrarAg]       = useState(false);
-  const [mostrarOrc, setMostrarOrc]     = useState(false);
   const [dataAg, setDataAg]             = useState("");
   const [erro, setErro]                 = useState<string | null>(null);
   const [enviado, setEnviado]           = useState(false);
@@ -379,6 +378,8 @@ function Row({
 
   const [faturamentoManual, setFaturamentoManual] = useState(row.faturamento_manual ?? false);
   const [toglingManual, setToglingManual]           = useState(false);
+  const [orcInternosLocal, setOrcInternosLocal]     = useState(row.orcamentos_internos_habilitado ?? false);
+  const [toglingOrc, setToglingOrc]                 = useState(false);
 
   const semContato = !contatoLocal.wa && !contatoLocal.email;
 
@@ -475,11 +476,27 @@ function Row({
     }
   }
 
-  const hasOrcDocs  = (row.documentos ?? []).some(
-    (d) => d.tipo === "orcamento_2" || d.tipo === "orcamento_3",
-  );
-  const orcEnabled  = row.orcamentos_internos_habilitado ?? false;
-  const orcDotColor = orcEnabled ? "#2E60FF" : "#CBD5E1";
+  async function handleToggleOrc() {
+    const newVal = !orcInternosLocal;
+    setOrcInternosLocal(newVal);
+    setToglingOrc(true);
+    try {
+      const res = await fetch("/api/faturamento-fornecedores", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ffId: row.id, orcamentosInternosHabilitado: newVal }),
+      });
+      if (!res.ok) {
+        setOrcInternosLocal(!newVal);
+      } else {
+        onToggle(row.id, newVal);
+      }
+    } catch {
+      setOrcInternosLocal(!newVal);
+    } finally {
+      setToglingOrc(false);
+    }
+  }
 
   async function excluir() {
     setExcluindo(true);
@@ -765,26 +782,6 @@ function Row({
               <ExternalLink className="w-3 h-3" />
             </a>
 
-            {/* Orçamentos internos */}
-            {hasOrcDocs && (
-              <button
-                onClick={() => setMostrarOrc((v) => !v)}
-                className="relative flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors"
-                style={{
-                  backgroundColor: mostrarOrc ? "#EEF2FF" : "#F8FAFC",
-                  color:           mostrarOrc ? "#2E60FF" : "#64748B",
-                }}
-                title="Orçamentos internos (2 e 3)"
-              >
-                <FileText className="w-3 h-3" />
-                Orç.
-                <span
-                  className="absolute -top-1 -right-1 w-2 h-2 rounded-full"
-                  style={{ backgroundColor: orcDotColor }}
-                />
-              </button>
-            )}
-
             {/* Excluir (só aparece quando onRemover é passado) */}
             {onRemover && !confirmDel && (
               <button
@@ -798,28 +795,55 @@ function Row({
             )}
           </div>
 
-          {/* Toggle: Faturamento Manual */}
-          <div className="flex items-center gap-1.5 mt-2">
-            <button
-              onClick={handleToggleManual}
-              disabled={toglingManual}
-              className="relative inline-flex h-4 w-8 flex-shrink-0 items-center rounded-full transition-colors"
-              style={{ backgroundColor: faturamentoManual ? "#7C3AED" : "#E2E8F0" }}
-              title={faturamentoManual
-                ? "Modo manual ativo — sem envio de link. Clique para reverter."
-                : "Marcar como faturamento interno (sem envio de link ao fornecedor)"}
-            >
-              {toglingManual
-                ? <Loader2 className="absolute left-0.5 w-3 h-3 animate-spin text-white" />
-                : <span
-                    className="inline-block h-3 w-3 transform rounded-full bg-white transition-transform"
-                    style={{ transform: faturamentoManual ? "translateX(17px)" : "translateX(2px)" }}
-                  />
-              }
-            </button>
-            <span className="text-xs" style={{ color: faturamentoManual ? "#7C3AED" : "#94A3B8" }}>
-              {faturamentoManual ? "Manual ativo" : "Faturar manual"}
-            </span>
+          {/* Toggles: Faturar manual + Orçamentos internos */}
+          <div className="flex items-center gap-4 mt-2">
+            {/* Faturar manual */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleToggleManual}
+                disabled={toglingManual}
+                className="relative inline-flex h-4 w-8 flex-shrink-0 items-center rounded-full transition-colors"
+                style={{ backgroundColor: faturamentoManual ? "#7C3AED" : "#E2E8F0" }}
+                title={faturamentoManual
+                  ? "Modo manual ativo — sem envio de link. Clique para reverter."
+                  : "Marcar como faturamento interno (sem envio de link ao fornecedor)"}
+              >
+                {toglingManual
+                  ? <Loader2 className="absolute left-0.5 w-3 h-3 animate-spin text-white" />
+                  : <span
+                      className="inline-block h-3 w-3 transform rounded-full bg-white transition-transform"
+                      style={{ transform: faturamentoManual ? "translateX(17px)" : "translateX(2px)" }}
+                    />
+                }
+              </button>
+              <span className="text-xs" style={{ color: faturamentoManual ? "#7C3AED" : "#94A3B8" }}>
+                {faturamentoManual ? "Manual ativo" : "Faturar manual"}
+              </span>
+            </div>
+
+            {/* Orçamentos internos (2 e 3) */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleToggleOrc}
+                disabled={toglingOrc}
+                className="relative inline-flex h-4 w-8 flex-shrink-0 items-center rounded-full transition-colors"
+                style={{ backgroundColor: orcInternosLocal ? "#2E60FF" : "#E2E8F0" }}
+                title={orcInternosLocal
+                  ? "Fornecedor preenche os 3 orçamentos no portal. Clique para desativar."
+                  : "Habilitar orçamentos 2 e 3 pelo portal do fornecedor"}
+              >
+                {toglingOrc
+                  ? <Loader2 className="absolute left-0.5 w-3 h-3 animate-spin text-white" />
+                  : <span
+                      className="inline-block h-3 w-3 transform rounded-full bg-white transition-transform"
+                      style={{ transform: orcInternosLocal ? "translateX(17px)" : "translateX(2px)" }}
+                    />
+                }
+              </button>
+              <span className="text-xs" style={{ color: orcInternosLocal ? "#2E60FF" : "#94A3B8" }}>
+                {orcInternosLocal ? "Orç. 1, 2 e 3" : "Só Orç. 1"}
+              </span>
+            </div>
           </div>
 
           {/* Confirmação de exclusão inline */}
@@ -844,11 +868,6 @@ function Row({
           {erro && <p className="text-xs mt-1" style={{ color: "#DC2626" }}>⚠ {erro}</p>}
         </td>
       </tr>
-
-      {/* Painel de orçamentos (toggle por fornecedor) */}
-      {mostrarOrc && (
-        <OrcamentosPanel row={row} onToggle={onToggle} />
-      )}
 
       {/* Edição de contato inline */}
       {editandoContato && (
