@@ -674,10 +674,26 @@ function Row({
                 title={`Editar número ${osPiLabel}`}
               >
                 <span className="text-xs font-semibold" style={{ color: "#64748B" }}>{osPiLabel}:</span>
-                <span className="text-xs font-mono" style={{ color: osPiLocal ? "#0F172A" : "#CBD5E1" }}>
-                  {osPiLocal ?? "—"}
-                </span>
-                <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "#94A3B8" }} />
+                {osPiLocal ? (
+                  <>
+                    <span className="text-xs font-mono" style={{ color: "#0F172A" }}>{osPiLocal}</span>
+                    <Edit2
+                      className="w-3 h-3 transition-opacity"
+                      style={{ color: "#94A3B8", opacity: 0.4 }}
+                    />
+                  </>
+                ) : (
+                  <span
+                    className="text-xs"
+                    style={{
+                      color: "#2E60FF",
+                      borderBottom: "1px dashed #93C5FD",
+                      paddingBottom: "1px",
+                    }}
+                  >
+                    Adicionar nº {osPiLabel}
+                  </span>
+                )}
               </button>
             )}
           </div>
