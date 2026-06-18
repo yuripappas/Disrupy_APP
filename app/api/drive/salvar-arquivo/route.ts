@@ -147,7 +147,14 @@ export async function POST(req: NextRequest) {
     .eq('id', documentoId)
     .single();
 
-  const docUpdateAuth: Record<string, unknown> = { status: 'enviado', arquivo_url: viewUrl };
+  // Upload feito por usuário autenticado (agência) → aprova automaticamente
+  const agora = new Date().toISOString();
+  const docUpdateAuth: Record<string, unknown> = {
+    status: 'aprovado',
+    arquivo_url: viewUrl,
+    aprovado_por: user.id,
+    aprovado_em: agora,
+  };
   if (nfStatus) {
     docUpdateAuth.numero_nf_status = nfStatus;
     if (numeroNf)     docUpdateAuth.numero_nf = numeroNf;

@@ -110,16 +110,6 @@ export function RevisaoProcessoSection({
       });
     });
 
-    // NFs da agência
-    fornecedoresNf.forEach((ff) => {
-      if (ff.nfStatus || ff.numeroNf) {
-        agenciaDocs.push({
-          label: `NF — ${ff.razaoSocial}`,
-          status: ff.nfStatus === "aprovado" ? "aprovado" : ff.numeroNf ? "enviado" : "pendente",
-        });
-      }
-    });
-
     const agencia: Block = {
       id: "__agencia__",
       tipo: "agencia",

@@ -1546,7 +1546,7 @@ export function DocumentacaoSection({
       ff.id !== ffId ? ff : {
         ...ff,
         documentos: ff.documentos.map((d) =>
-          d.id !== docId ? d : { ...d, status: "enviado", arquivo_url: arquivoUrl }
+          d.id !== docId ? d : { ...d, status: "aprovado", arquivo_url: arquivoUrl }
         ),
       }
     ));
