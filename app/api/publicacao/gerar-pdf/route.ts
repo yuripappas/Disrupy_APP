@@ -2,42 +2,20 @@
  * POST /api/publicacao/gerar-pdf
  *
  * Gera o PDF consolidado do processo de faturamento.
- * Cria um documento A4 com sumário, seção por bloco e links clicáveis
- * para cada arquivo no Google Drive.
+ * Baixa cada arquivo do Google Drive e mescla as páginas em sequência,
+ * na ordem definida na Etapa 4 (Revisão do Processo).
  *
- * Body: {
- *   faturamentoId: string
- *   blockOrder?:   string[]  — IDs dos blocos na ordem definida na Etapa 4
- * }
+ * Para documentos cujo link não é um PDF baixável (evidências externas),
+ * insere uma página de capa com o título e o link clicável.
  *
+ * Body: { faturamentoId: string; blockOrder?: string[] }
  * Retorna: application/pdf (binário)
  */
 
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import {
-  PDFDocument, rgb, StandardFonts, PDFName, PDFString, PDFArray,
-} from 'pdf-lib';
-
-// ── Palette ───────────────────────────────────────────────────────────────────
-
-const COR_AZUL_ESCURO  = rgb(0.000, 0.145, 0.431);  // #00246D
-const COR_AZUL         = rgb(0.180, 0.376, 1.000);  // #2E60FF
-const COR_VERDE        = rgb(0.022, 0.588, 0.412);  // #059669
-const COR_ROXO         = rgb(0.486, 0.231, 0.929);  // #7C3AED
-const COR_CINZA        = rgb(0.392, 0.455, 0.545);  // #64748B
-const COR_CINZA_CLARO  = rgb(0.882, 0.910, 0.941);  // #E2E8F0
-const COR_PRETO        = rgb(0.059, 0.090, 0.165);  // #0F172A
-const COR_BRANCO       = rgb(1.000, 1.000, 1.000);
-const COR_AMARELO      = rgb(0.851, 0.467, 0.024);  // #D97706
-const COR_BG_AZUL      = rgb(0.933, 0.945, 1.000);  // #EEF2FF
-
-// A4 em pontos
-const A4_W    = 595.28;
-const A4_H    = 841.89;
-const MARGIN  = 50;
-const CONTENT_W = A4_W - MARGIN * 2;
+import { PDFDocument, rgb, StandardFonts, PDFName, PDFString, PDFArray } from 'pdf-lib';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -56,7 +34,50 @@ interface Bloco {
   docs:   DocItem[];
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Google Drive helpers ──────────────────────────────────────────────────────
+
+function extractDriveFileId(url: string): string | null {
+  // Suporta:
+  //   https://drive.google.com/file/d/{id}/view
+  //   https://drive.google.com/open?id={id}
+  //   https://drive.usercontent.google.com/...?id={id}
+  const matchPath  = url.match(/\/file\/d\/([^\/\?&#]+)/);
+  if (matchPath) return matchPath[1];
+  const matchParam = url.match(/[?&]id=([^&&#]+)/);
+  if (matchParam) return matchParam[1];
+  return null;
+}
+
+async function downloadDrivePdf(url: string): Promise<Uint8Array | null> {
+  const fileId = extractDriveFileId(url);
+  if (!fileId) return null;
+
+  // URL de download direto (confirm=t pula o aviso de arquivo grande)
+  const downloadUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+
+  try {
+    const res = await fetch(downloadUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      redirect: 'follow',
+    });
+
+    if (!res.ok) return null;
+
+    const buf = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+
+    // Valida assinatura PDF (%PDF-)
+    if (bytes[0] !== 0x25 || bytes[1] !== 0x50 || bytes[2] !== 0x44 || bytes[3] !== 0x46) {
+      return null;
+    }
+
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+// ── Página de capa (para links externos ou downloads que falharam) ─────────────
 
 type EmbeddedFont = Awaited<ReturnType<PDFDocument['embedFont']>>;
 
@@ -66,255 +87,148 @@ function adicionarLink(
 ) {
   const { doc } = page;
   const annot = doc.context.obj({
-    Type: PDFName.of('Annot'),
+    Type:    PDFName.of('Annot'),
     Subtype: PDFName.of('Link'),
-    Rect: doc.context.obj([x, y, x + w, y + h]),
-    Border: doc.context.obj([0, 0, 0]),
+    Rect:    doc.context.obj([x, y, x + w, y + h]),
+    Border:  doc.context.obj([0, 0, 0]),
     A: doc.context.obj({
       Type: PDFName.of('Action'),
-      S: PDFName.of('URI'),
-      URI: PDFString.of(url),
+      S:    PDFName.of('URI'),
+      URI:  PDFString.of(url),
     }),
   });
-  const annotRef = doc.context.register(annot);
+  const ref      = doc.context.register(annot);
   const existing = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
   if (existing) {
-    existing.push(annotRef);
+    existing.push(ref);
   } else {
-    page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]));
+    page.node.set(PDFName.of('Annots'), doc.context.obj([ref]));
   }
 }
 
-function wrapText(text: string, font: EmbeddedFont, size: number, maxW: number): string[] {
-  const words  = text.split(' ');
-  const lines: string[] = [];
-  let current  = '';
-  for (const word of words) {
-    const test = current ? `${current} ${word}` : word;
-    const w    = font.widthOfTextAtSize(test, size);
-    if (w > maxW && current) { lines.push(current); current = word; }
-    else { current = test; }
+async function criarPaginaCapa(
+  pdf:          PDFDocument,
+  fontBold:     EmbeddedFont,
+  fontRegular:  EmbeddedFont,
+  label:        string,
+  url:          string | null,
+  blocoTitulo:  string,
+  blocoTipo:    string,
+) {
+  const A4_W = 595.28;
+  const A4_H = 841.89;
+  const M    = 72;
+  const CW   = A4_W - M * 2;
+
+  const COR_CINZA      = rgb(0.39, 0.46, 0.55);
+  const COR_CINZA_CLARO = rgb(0.88, 0.91, 0.94);
+  const COR_AZUL       = rgb(0.18, 0.38, 1.0);
+  const COR_PRETO      = rgb(0.06, 0.09, 0.17);
+
+  const pg = pdf.addPage([A4_W, A4_H]);
+
+  // Linha superior decorativa
+  pg.drawRectangle({ x: M, y: A4_H - M - 4, width: CW, height: 4, color: COR_AZUL });
+
+  // Bloco de origem (pequeno)
+  pg.drawText(`${blocoTipo.toUpperCase()}  ·  ${blocoTitulo.toUpperCase()}`, {
+    x: M, y: A4_H - M - 28, size: 8, font: fontRegular, color: COR_CINZA,
+  });
+
+  // Label principal
+  const palavras = label.split(' ');
+  const linhas: string[] = [];
+  let atual = '';
+  for (const p of palavras) {
+    const test = atual ? `${atual} ${p}` : p;
+    if (fontBold.widthOfTextAtSize(test, 20) > CW && atual) { linhas.push(atual); atual = p; }
+    else { atual = test; }
   }
-  if (current) lines.push(current);
-  return lines;
+  if (atual) linhas.push(atual);
+
+  const labelY = A4_H / 2 + 20 + (linhas.length - 1) * 14;
+  linhas.forEach((l, i) => {
+    pg.drawText(l, { x: M, y: labelY - i * 28, size: 20, font: fontBold, color: COR_PRETO });
+  });
+
+  pg.drawLine({ start: { x: M, y: A4_H / 2 - 10 }, end: { x: M + CW, y: A4_H / 2 - 10 }, thickness: 0.5, color: COR_CINZA_CLARO });
+
+  if (url) {
+    pg.drawText('Acesse o documento em:', {
+      x: M, y: A4_H / 2 - 36, size: 10, font: fontRegular, color: COR_CINZA,
+    });
+
+    const linkLabel = url.length > 80 ? url.slice(0, 80) + '...' : url;
+    const linkY     = A4_H / 2 - 56;
+    pg.drawText(linkLabel, { x: M, y: linkY, size: 9, font: fontRegular, color: COR_AZUL });
+    pg.drawLine({
+      start: { x: M, y: linkY - 1 },
+      end:   { x: M + fontRegular.widthOfTextAtSize(linkLabel, 9), y: linkY - 1 },
+      thickness: 0.5, color: COR_AZUL,
+    });
+    adicionarLink(pg as ReturnType<PDFDocument['getPage']>, url, M, linkY - 4, CW, 16);
+
+    pg.drawText('Clique no link acima para acessar o arquivo original.', {
+      x: M, y: linkY - 22, size: 8, font: fontRegular, color: COR_CINZA,
+    });
+  } else {
+    pg.drawText('Documento nao disponivel — arquivo nao anexado.', {
+      x: M, y: A4_H / 2 - 36, size: 10, font: fontRegular, color: COR_CINZA,
+    });
+  }
+
+  // Rodapé
+  pg.drawLine({ start: { x: M, y: M + 16 }, end: { x: M + CW, y: M + 16 }, thickness: 0.3, color: COR_CINZA_CLARO });
+  pg.drawText('Disrupy Comunicacao Brasil Ltda · sistema de faturamento', {
+    x: M, y: M, size: 7, font: fontRegular, color: COR_CINZA,
+  });
 }
 
-function corPorStatus(status: string): ReturnType<typeof rgb> {
-  if (status === 'aprovado')  return COR_VERDE;
-  if (status === 'reprovado') return rgb(0.937, 0.267, 0.267);
-  if (status === 'enviado')   return COR_AMARELO;
-  return COR_CINZA;
-}
+// ── Gerador principal ─────────────────────────────────────────────────────────
 
-function labelStatus(status: string): string {
-  if (status === 'aprovado')  return 'OK';
-  if (status === 'reprovado') return 'XX';
-  if (status === 'enviado')   return '~~';
-  return '..';
-}
-
-// ── Gerador ───────────────────────────────────────────────────────────────────
-
-async function gerarPdf(
-  blocos:       Bloco[],
-  nomeCampanha: string,
-  clienteNome:  string,
-  dataGeracao:  string,
-): Promise<Uint8Array> {
+async function gerarPdfMesclado(blocos: Bloco[]): Promise<Uint8Array> {
   const pdf         = await PDFDocument.create();
   const fontBold    = await pdf.embedFont(StandardFonts.HelveticaBold);
   const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
 
-  const totalDocs      = blocos.reduce((s, b) => s + b.docs.length, 0);
-  const totalAprovados = blocos.reduce(
-    (s, b) => s + b.docs.filter(d => d.status === 'aprovado').length, 0,
-  );
-
-  // ── 1. Capa ────────────────────────────────────────────────────────────────
-  {
-    const pg = pdf.addPage([A4_W, A4_H]);
-
-    // Banner superior
-    pg.drawRectangle({ x: 0, y: A4_H - 200, width: A4_W, height: 200, color: COR_AZUL_ESCURO });
-
-    pg.drawText('PROCESSO DE FATURAMENTO', {
-      x: MARGIN, y: A4_H - 78, size: 20, font: fontBold, color: COR_BRANCO,
-    });
-
-    const linhasCamp = wrapText(nomeCampanha.toUpperCase(), fontBold, 14, CONTENT_W);
-    linhasCamp.slice(0, 2).forEach((l, i) => {
-      pg.drawText(l, { x: MARGIN, y: A4_H - 108 - i * 20, size: 14, font: fontBold, color: COR_BRANCO });
-    });
-
-    pg.drawText(clienteNome, {
-      x: MARGIN, y: A4_H - 148, size: 10, font: fontRegular, color: rgb(0.7, 0.8, 1),
-    });
-    pg.drawText(`Gerado em: ${dataGeracao}`, {
-      x: MARGIN, y: A4_H - 165, size: 9, font: fontRegular, color: rgb(0.6, 0.7, 0.9),
-    });
-
-    // Estatísticas
-    const statsY  = A4_H - 258;
-    const statW   = (CONTENT_W - 30) / 3;
-    const stats   = [
-      { label: 'BLOCOS',      valor: String(blocos.length) },
-      { label: 'DOCUMENTOS',  valor: String(totalDocs) },
-      { label: 'APROVADOS',   valor: String(totalAprovados) },
-    ];
-    stats.forEach((s, i) => {
-      const sx = MARGIN + i * (statW + 15);
-      pg.drawRectangle({ x: sx, y: statsY - 40, width: statW, height: 60, color: COR_BG_AZUL, borderColor: COR_CINZA_CLARO, borderWidth: 1 });
-      pg.drawText(s.label, { x: sx + 10, y: statsY - 10, size: 8, font: fontRegular, color: COR_CINZA });
-      pg.drawText(s.valor, { x: sx + 10, y: statsY - 30, size: 18, font: fontBold, color: COR_AZUL_ESCURO });
-    });
-
-    pg.drawLine({ start: { x: MARGIN, y: 65 }, end: { x: A4_W - MARGIN, y: 65 }, thickness: 0.5, color: COR_CINZA_CLARO });
-    pg.drawText('Documento gerado automaticamente pelo sistema de faturamento Disrupy.', {
-      x: MARGIN, y: 50, size: 8, font: fontRegular, color: COR_CINZA,
-    });
-  }
-
-  // ── 2. Sumário ─────────────────────────────────────────────────────────────
-  {
-    const pg = pdf.addPage([A4_W, A4_H]);
-    pg.drawRectangle({ x: 0, y: A4_H - 70, width: A4_W, height: 70, color: COR_AZUL });
-    pg.drawText('SUMARIO DO PROCESSO', {
-      x: MARGIN, y: A4_H - 44, size: 16, font: fontBold, color: COR_BRANCO,
-    });
-
-    let y = A4_H - 120;
-
-    blocos.forEach((bloco, idx) => {
-      if (y < 80) return;
-      const aprovados  = bloco.docs.filter(d => d.status === 'aprovado').length;
-      const cor        = bloco.tipo === 'agencia' ? COR_AZUL : bloco.tipo === 'midia' ? COR_ROXO : COR_VERDE;
-      const tipoLabel  = bloco.tipo === 'agencia' ? 'Agencia' : bloco.tipo === 'midia' ? 'Midia' : 'Producao';
-
-      pg.drawRectangle({ x: MARGIN, y: y - 22, width: 6, height: 26, color: cor });
-      pg.drawText(`${idx + 1}. ${bloco.titulo}`, {
-        x: MARGIN + 16, y, size: 11, font: fontBold, color: COR_PRETO,
-      });
-      pg.drawText(`${tipoLabel}  ${aprovados}/${bloco.docs.length} aprovados`, {
-        x: MARGIN + 16, y: y - 14, size: 8, font: fontRegular, color: COR_CINZA,
-      });
-      if (bloco.cnpj) {
-        pg.drawText(bloco.cnpj, { x: A4_W - MARGIN - 130, y: y - 14, size: 8, font: fontRegular, color: COR_CINZA });
-      }
-      pg.drawText(`Bloco ${idx + 1}`, { x: A4_W - MARGIN - 40, y, size: 9, font: fontRegular, color: COR_CINZA });
-      y -= 38;
-
-      bloco.docs.forEach(doc => {
-        if (y < 80) return;
-        const corDoc = corPorStatus(doc.status);
-        pg.drawText(`${labelStatus(doc.status)}  ${doc.label}`, {
-          x: MARGIN + 20, y, size: 8, font: fontRegular, color: corDoc,
-        });
-        y -= 14;
-      });
-
-      y -= 12;
-      pg.drawLine({ start: { x: MARGIN, y: y + 6 }, end: { x: A4_W - MARGIN, y: y + 6 }, thickness: 0.3, color: COR_CINZA_CLARO });
-      y -= 4;
-    });
-  }
-
-  // ── 3. Seção por bloco ─────────────────────────────────────────────────────
-  for (let bi = 0; bi < blocos.length; bi++) {
-    const bloco     = blocos[bi];
-    const cor       = bloco.tipo === 'agencia' ? COR_AZUL : bloco.tipo === 'midia' ? COR_ROXO : COR_VERDE;
+  for (const bloco of blocos) {
     const tipoLabel = bloco.tipo === 'agencia' ? 'Agencia' : bloco.tipo === 'midia' ? 'Midia' : 'Producao';
 
-    let pg = pdf.addPage([A4_W, A4_H]);
-    let y  = A4_H - 30;
-
-    // Header do bloco
-    pg.drawRectangle({ x: 0, y: A4_H - 80, width: A4_W, height: 80, color: cor });
-    pg.drawText(`BLOCO ${bi + 1}`, { x: MARGIN, y: A4_H - 28, size: 9, font: fontRegular, color: COR_BRANCO });
-    pg.drawText(bloco.titulo.toUpperCase(), { x: MARGIN, y: A4_H - 48, size: 14, font: fontBold, color: COR_BRANCO });
-    pg.drawText(tipoLabel, { x: MARGIN, y: A4_H - 65, size: 9, font: fontRegular, color: rgb(0.85, 0.92, 1) });
-    if (bloco.cnpj) {
-      pg.drawText(bloco.cnpj, { x: A4_W - MARGIN - 150, y: A4_H - 48, size: 9, font: fontRegular, color: COR_BRANCO });
-    }
-
-    y = A4_H - 110;
-
-    const aprovados = bloco.docs.filter(d => d.status === 'aprovado').length;
-    pg.drawText(`${aprovados} de ${bloco.docs.length} documentos aprovados`, {
-      x: MARGIN, y, size: 9, font: fontRegular, color: COR_CINZA,
-    });
-    y -= 24;
-
-    // Cada documento
-    for (let di = 0; di < bloco.docs.length; di++) {
-      const doc         = bloco.docs[di];
-      const alturaCard  = doc.arquivo_url ? 72 : 46;
-
-      // Nova página se necessário
-      if (y < alturaCard + 40) {
-        pg = pdf.addPage([A4_W, A4_H]);
-        pg.drawRectangle({ x: 0, y: A4_H - 30, width: A4_W, height: 30, color: cor });
-        pg.drawText(`${bloco.titulo} (cont.)`, { x: MARGIN, y: A4_H - 20, size: 8, font: fontRegular, color: COR_BRANCO });
-        y = A4_H - 50;
+    for (const doc of bloco.docs) {
+      if (!doc.arquivo_url) {
+        // Sem arquivo: capa de placeholder
+        await criarPaginaCapa(pdf, fontBold, fontRegular, doc.label, null, bloco.titulo, tipoLabel);
+        continue;
       }
 
-      const corBorda = corPorStatus(doc.status);
-
-      // Card do documento
-      pg.drawRectangle({
-        x: MARGIN, y: y - alturaCard, width: CONTENT_W, height: alturaCard,
-        color: COR_BRANCO, borderColor: COR_CINZA_CLARO, borderWidth: 0.5,
-      });
-      // Barra colorida esquerda
-      pg.drawRectangle({ x: MARGIN, y: y - alturaCard, width: 4, height: alturaCard, color: corBorda });
-
-      // Número
-      pg.drawText(`${di + 1}`, { x: MARGIN + 12, y: y - 16, size: 8, font: fontRegular, color: COR_CINZA });
-
-      // Status
-      const statusText = doc.status === 'aprovado'  ? 'Aprovado'   :
-                         doc.status === 'reprovado' ? 'Reprovado'  :
-                         doc.status === 'enviado'   ? 'Em analise' :
-                         'Pendente';
-      pg.drawText(statusText, { x: A4_W - MARGIN - 70, y: y - 16, size: 8, font: fontBold, color: corBorda });
-
-      // Label
-      const linhasLabel = wrapText(doc.label, fontBold, 10, CONTENT_W - 120);
-      linhasLabel.slice(0, 2).forEach((l, li) => {
-        pg.drawText(l, { x: MARGIN + 30, y: y - 16 - li * 14, size: 10, font: fontBold, color: COR_PRETO });
-      });
-
-      // Link
-      if (doc.arquivo_url) {
-        const linkY     = y - alturaCard + 14;
-        const linkLabel = 'Acessar no Google Drive';
-        pg.drawText(linkLabel, { x: MARGIN + 12, y: linkY, size: 8, font: fontRegular, color: COR_AZUL });
-        pg.drawLine({
-          start:     { x: MARGIN + 12, y: linkY - 1 },
-          end:       { x: MARGIN + 12 + fontRegular.widthOfTextAtSize(linkLabel, 8), y: linkY - 1 },
-          thickness: 0.5, color: COR_AZUL,
-        });
-        adicionarLink(pg as ReturnType<PDFDocument['getPage']>, doc.arquivo_url, MARGIN + 10, linkY - 4, CONTENT_W - 20, 16);
-
-        const urlTrunc = doc.arquivo_url.length > 80 ? doc.arquivo_url.slice(0, 80) + '...' : doc.arquivo_url;
-        pg.drawText(urlTrunc, { x: MARGIN + 12, y: linkY - 11, size: 6, font: fontRegular, color: COR_CINZA });
+      const fileId = extractDriveFileId(doc.arquivo_url);
+      if (!fileId) {
+        // URL externa sem fileId do Drive: capa com link
+        await criarPaginaCapa(pdf, fontBold, fontRegular, doc.label, doc.arquivo_url, bloco.titulo, tipoLabel);
+        continue;
       }
 
-      y -= alturaCard + 8;
-    }
+      // Tenta baixar o PDF do Google Drive
+      const pdfBytes = await downloadDrivePdf(doc.arquivo_url);
 
-    pg.drawLine({ start: { x: MARGIN, y: 44 }, end: { x: A4_W - MARGIN, y: 44 }, thickness: 0.3, color: COR_CINZA_CLARO });
-    pg.drawText(`Bloco ${bi + 1} de ${blocos.length}`, {
-      x: MARGIN, y: 30, size: 8, font: fontRegular, color: COR_CINZA,
-    });
+      if (!pdfBytes) {
+        // Não conseguiu baixar ou não é PDF: capa com link
+        await criarPaginaCapa(pdf, fontBold, fontRegular, doc.label, doc.arquivo_url, bloco.titulo, tipoLabel);
+        continue;
+      }
+
+      // Mescla páginas do PDF baixado no documento principal
+      try {
+        const extPdf   = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+        const indices  = extPdf.getPageIndices();
+        const copied   = await pdf.copyPages(extPdf, indices);
+        copied.forEach(p => pdf.addPage(p));
+      } catch {
+        // PDF corrompido ou protegido: capa com link como fallback
+        await criarPaginaCapa(pdf, fontBold, fontRegular, doc.label, doc.arquivo_url, bloco.titulo, tipoLabel);
+      }
+    }
   }
-
-  // ── 4. Paginação ───────────────────────────────────────────────────────────
-  const pages = pdf.getPages();
-  pages.forEach((p, i) => {
-    p.drawText(`${i + 1} / ${pages.length}`, {
-      x: A4_W - MARGIN - 40, y: 20, size: 7, font: fontRegular, color: COR_CINZA,
-    });
-  });
 
   return pdf.save();
 }
@@ -344,6 +258,7 @@ export async function POST(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
+  // Busca os dados do faturamento
   const { data: fat } = await admin
     .from('faturamentos')
     .select(`
@@ -371,6 +286,8 @@ export async function POST(req: NextRequest) {
     .eq('faturamento_id', faturamentoId)
     .order('created_at');
 
+  // ── Monta blocos ──────────────────────────────────────────────────────────
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const agenciaBlock: Bloco = {
     id:    '__agencia__',
@@ -378,7 +295,7 @@ export async function POST(req: NextRequest) {
     titulo: 'Agencia',
     docs: [
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(certidoes ?? []).map((c: any) => ({
+      ...(certidoes ?? []).map((c: any): DocItem => ({
         label:       c.label as string,
         status:      c.arquivo_url ? 'aprovado' : 'pendente',
         arquivo_url: (c.arquivo_url ?? null) as string | null,
@@ -386,8 +303,8 @@ export async function POST(req: NextRequest) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ...(fat.faturamento_custos_internos ?? []).flatMap((ci: any) =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (ci.custo_interno_documentos ?? []).map((d: any) => ({
-          label:       `Peca - ${ci.servico}` as string,
+        (ci.custo_interno_documentos ?? []).map((d: any): DocItem => ({
+          label:       `${ci.servico}`,
           status:      (d.status ?? 'pendente') as string,
           arquivo_url: (d.arquivo_url ?? null) as string | null,
         })),
@@ -413,6 +330,8 @@ export async function POST(req: NextRequest) {
       })),
     }));
 
+  // ── Aplica ordem da Etapa 4 ───────────────────────────────────────────────
+
   const todos = [agenciaBlock, ...fornBlocks];
   let blocos: Bloco[];
   if (blockOrder && blockOrder.length > 0) {
@@ -424,11 +343,9 @@ export async function POST(req: NextRequest) {
     blocos = todos;
   }
 
-  const agora = new Date().toLocaleDateString('pt-BR', {
-    day: '2-digit', month: 'long', year: 'numeric',
-  });
+  // ── Gera e retorna o PDF ──────────────────────────────────────────────────
 
-  const pdfBytes = await gerarPdf(blocos, fat.nome_campanha as string, fat.cliente_nome as string, agora);
+  const pdfBytes = await gerarPdfMesclado(blocos);
 
   return new Response(Buffer.from(pdfBytes), {
     headers: {
@@ -438,3 +355,6 @@ export async function POST(req: NextRequest) {
     },
   });
 }
+
+// Aumenta o tempo máximo de execução para suportar download de múltiplos arquivos
+export const maxDuration = 60; // segundos (requer plano Vercel Pro ou superior)
