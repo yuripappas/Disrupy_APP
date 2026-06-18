@@ -49,8 +49,7 @@ export default async function FaturamentoDetailPage({
         fornecedor:fornecedores ( id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp, contato_email ),
         documentos ( id, tipo, label, status, arquivo_url, reprovacao_motivo,
           numero_nf, numero_nf_status, valor_nf,
-          documento_arquivos ( id, arquivo_url, nome_arquivo, tamanho_bytes, created_at ) ),
-        disparos ( id, tipo, subtipo, status, created_at, enviado_em, agendado_para )
+          documento_arquivos ( id, arquivo_url, nome_arquivo, tamanho_bytes, created_at ) )
       )
     `)
     .eq("id", id)
@@ -58,9 +57,34 @@ export default async function FaturamentoDetailPage({
 
   if (!fat) notFound();
 
+  // Busca disparos separadamente para evitar dependência de detecção automática de FK pelo PostgREST.
+  // O nested select de disparos pode retornar vazio quando o cache de schema do PostgREST
+  // não detecta corretamente a FK faturamento_fornecedor_id → faturamento_fornecedores.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ffIdsParaDisparos = (fat.faturamento_fornecedores ?? []).map((ff: any) => ff.id as string);
+  const { data: allDisparos } = ffIdsParaDisparos.length > 0
+    ? await admin
+        .from("disparos")
+        .select("id, tipo, subtipo, status, created_at, enviado_em, agendado_para, faturamento_fornecedor_id")
+        .in("faturamento_fornecedor_id", ffIdsParaDisparos)
+        .order("created_at", { ascending: false })
+    : { data: [] as never[] };
+
+  const disparosByFf = new Map<string, object[]>();
+  for (const d of (allDisparos ?? [])) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ffId = (d as any).faturamento_fornecedor_id as string;
+    if (!disparosByFf.has(ffId)) disparosByFf.set(ffId, []);
+    disparosByFf.get(ffId)!.push(d);
+  }
+
   const etapas = (fat.faturamento_etapas ?? []).sort((a: { numero: number }, b: { numero: number }) => a.numero - b.numero);
   const custosInternos = fat.faturamento_custos_internos ?? [];
-  const fornecedores = fat.faturamento_fornecedores ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fornecedores = (fat.faturamento_fornecedores ?? []).map((ff: any) => ({
+    ...ff,
+    disparos: disparosByFf.get(ff.id) ?? [],
+  }));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ffMidia    = fornecedores.filter((f: any) => f.fornecedor?.tipo === "midia"    || (f.associado === false && f.tipo_iclips === "midia"));
