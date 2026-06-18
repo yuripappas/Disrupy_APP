@@ -217,7 +217,9 @@ function StepRow({
       : (d.subtipo === stepDef.step || (stepDef.step === "link_inicial" && !d.subtipo)),
   );
 
-  const wasSent     = byStep.some((d) => d.status === "enviado");
+  // Para link_inicial: usa envio_inicial_em como fallback quando disparos[] está vazio
+  const wasSent     = byStep.some((d) => d.status === "enviado") ||
+    (stepDef.step === "link_inicial" && byStep.length === 0 && inicialDate !== null);
   const hasFailed   = byStep.some((d) => d.status === "falhou");
   const isScheduled = byStep.some((d) => d.status === "agendado");
   const agendadoDsp = byStep.find((d) => d.status === "agendado");
@@ -258,7 +260,10 @@ function StepRow({
   let dataLabel: string;
   let dataValue: string | null = null;
   if (stepStatus === "sent") {
-    dataLabel = fmt(lastSent?.enviado_em ?? lastSent?.created_at);
+    // lastSent pode ser undefined quando usamos fallback de envio_inicial_em
+    dataLabel = lastSent
+      ? fmt(lastSent.enviado_em ?? lastSent.created_at)
+      : inicialDate ? fmt(inicialDate.toISOString()) : "—";
   } else if (stepStatus === "scheduled" && agendadoDsp) {
     dataLabel = `Agendado para ${fmt(agendadoDsp.agendado_para)}`;
     dataValue = agendadoDsp.agendado_para;

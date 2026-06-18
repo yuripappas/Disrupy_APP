@@ -222,11 +222,15 @@ function UltimoDisparoCel({ row }: { row: ComputedRow }) {
       ) : (
         <DispStatusBadge />
       )}
-      {row.ultimoDisparo && (
+      {row.ultimoDisparo ? (
         <p className="text-xs" style={{ color: "#94A3B8" }}>
           {formatDt(row.ultimoDisparo.enviado_em ?? row.ultimoDisparo.agendado_para ?? row.ultimoDisparo.created_at)}
         </p>
-      )}
+      ) : row.envio_inicial_em ? (
+        <p className="text-xs" style={{ color: "#94A3B8" }}>
+          {formatDt(row.envio_inicial_em)}
+        </p>
+      ) : null}
       {/* Canais */}
       <div className="flex items-center gap-2">
         {/* WhatsApp */}
