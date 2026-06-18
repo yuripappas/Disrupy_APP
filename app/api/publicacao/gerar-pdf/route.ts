@@ -48,12 +48,13 @@ function extractDriveFileId(url: string): string | null {
   return null;
 }
 
-async function downloadDrivePdf(url: string): Promise<Uint8Array | null> {
+async function downloadPdfFromUrl(url: string): Promise<Uint8Array | null> {
+  // Google Drive: usa URL de download direto (confirm=t pula aviso de arquivo grande)
+  // Supabase Storage / qualquer outra URL: faz fetch direto
   const fileId = extractDriveFileId(url);
-  if (!fileId) return null;
-
-  // URL de download direto (confirm=t pula o aviso de arquivo grande)
-  const downloadUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+  const downloadUrl = fileId
+    ? `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`
+    : url;
 
   try {
     const res = await fetch(downloadUrl, {
@@ -66,7 +67,7 @@ async function downloadDrivePdf(url: string): Promise<Uint8Array | null> {
     const buf = await res.arrayBuffer();
     const bytes = new Uint8Array(buf);
 
-    // Valida assinatura PDF (%PDF-)
+    // Valida assinatura PDF (%PDF-) — URLs externas não-PDF retornam null
     if (bytes[0] !== 0x25 || bytes[1] !== 0x50 || bytes[2] !== 0x44 || bytes[3] !== 0x46) {
       return null;
     }
@@ -201,18 +202,11 @@ async function gerarPdfMesclado(blocos: Bloco[]): Promise<Uint8Array> {
         continue;
       }
 
-      const fileId = extractDriveFileId(doc.arquivo_url);
-      if (!fileId) {
-        // URL externa sem fileId do Drive: capa com link
-        await criarPaginaCapa(pdf, fontBold, fontRegular, doc.label, doc.arquivo_url, bloco.titulo, tipoLabel);
-        continue;
-      }
-
-      // Tenta baixar o PDF do Google Drive
-      const pdfBytes = await downloadDrivePdf(doc.arquivo_url);
+      // Tenta baixar o PDF (Drive, Supabase Storage, ou qualquer URL de arquivo)
+      const pdfBytes = await downloadPdfFromUrl(doc.arquivo_url);
 
       if (!pdfBytes) {
-        // Não conseguiu baixar ou não é PDF: capa com link
+        // Download falhou ou URL não aponta para PDF (evidência externa): capa com link
         await criarPaginaCapa(pdf, fontBold, fontRegular, doc.label, doc.arquivo_url, bloco.titulo, tipoLabel);
         continue;
       }
