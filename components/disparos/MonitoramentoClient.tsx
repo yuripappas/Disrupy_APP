@@ -87,6 +87,9 @@ function computeRow(ff: FFRow): ComputedRow {
     if (ultimoDisparo.status === "agendado") dispStatus = "agendado";
     else if (ultimoDisparo.status === "enviado") dispStatus = "enviado";
     else if (ultimoDisparo.status === "falhou")  dispStatus = "falhou";
+  } else if (ff.envio_inicial_em) {
+    // disparos[] vazio mas sabemos que já foi enviado — usa envio_inicial_em como fallback
+    dispStatus = "enviado";
   }
 
   const hasReprovado = docs.some((d) => d.status === "reprovado");
@@ -1226,7 +1229,7 @@ export function MonitoramentoClient({
     total:       rows.length,
     enviados:    rows.filter((r) => !r.faturamento_manual && r.dispStatus === "enviado").length,
     responderam: rows.filter((r) => r.docStatus  === "respondeu").length,
-    pendentes:   rows.filter((r) => !r.faturamento_manual && (r.dispStatus === "nao_enviado" || r.dispStatus === "falhou")).length,
+    pendentes:   rows.filter((r) => !r.faturamento_manual && !r.envio_inicial_em && r.docStatus !== "respondeu").length,
     agendados:   rows.filter((r) => !r.faturamento_manual && r.dispStatus === "agendado").length,
     falhou:      rows.filter((r) => !r.faturamento_manual && r.dispStatus === "falhou").length,
     semContato:  rows.filter((r) => !r.faturamento_manual && !r.fornecedor.contato_whatsapp && !r.fornecedor.contato_email).length,

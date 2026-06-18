@@ -62,13 +62,19 @@ export default async function FaturamentoDetailPage({
   // não detecta corretamente a FK faturamento_fornecedor_id → faturamento_fornecedores.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ffIdsParaDisparos = (fat.faturamento_fornecedores ?? []).map((ff: any) => ff.id as string);
-  const { data: allDisparos } = ffIdsParaDisparos.length > 0
+  const { data: allDisparos, error: disparosError } = ffIdsParaDisparos.length > 0
     ? await admin
         .from("disparos")
         .select("id, tipo, subtipo, status, created_at, enviado_em, agendado_para, faturamento_fornecedor_id")
         .in("faturamento_fornecedor_id", ffIdsParaDisparos)
         .order("created_at", { ascending: false })
-    : { data: [] as never[] };
+    : { data: [] as never[], error: null };
+
+  if (disparosError) {
+    console.error("[page] disparos query failed:", disparosError.message, "| ff_ids:", ffIdsParaDisparos);
+  } else {
+    console.log(`[page] disparos carregados: ${(allDisparos ?? []).length} para ${ffIdsParaDisparos.length} fornecedores`);
+  }
 
   const disparosByFf = new Map<string, object[]>();
   for (const d of (allDisparos ?? [])) {
