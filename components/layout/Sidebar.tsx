@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, FileText, Users, ShieldCheck, Settings, LogOut, MessageSquare,
-  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -31,21 +30,10 @@ const ROLE_LABEL: Record<string, string> = {
 type CurrentUser = { id: string; nome: string; email: string; role: string };
 
 export function Sidebar({ currentUser }: { currentUser: CurrentUser }) {
-  const pathname  = usePathname();
-  const router    = useRouter();
+  const pathname = usePathname();
+  const router   = useRouter();
   const [perfilOpen, setPerfilOpen] = useState(false);
-  const [collapsed, setCollapsed]   = useState(false);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("sidebar-collapsed");
-    if (saved === "true") setCollapsed(true);
-  }, []);
-
-  function toggleCollapsed() {
-    const next = !collapsed;
-    setCollapsed(next);
-    localStorage.setItem("sidebar-collapsed", String(next));
-  }
+  const [collapsed, setCollapsed]   = useState(true);
 
   async function handleLogout() {
     const supabase = createClient();
@@ -69,6 +57,8 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUser }) {
           width: collapsed ? "64px" : "232px",
           transition: "width 220ms ease",
         }}
+        onMouseEnter={() => setCollapsed(false)}
+        onMouseLeave={() => setCollapsed(true)}
       >
         {/* Logo */}
         <div
@@ -76,7 +66,7 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUser }) {
           style={{
             borderBottom: "1px solid rgba(255,255,255,0.1)",
             padding: collapsed ? "20px 0" : "20px",
-            justifyContent: collapsed ? "center" : "space-between",
+            justifyContent: collapsed ? "center" : "flex-start",
           }}
         >
           {collapsed ? (
@@ -87,33 +77,15 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUser }) {
               D
             </div>
           ) : (
-            <>
-              <div className="min-w-0">
-                <Image src="/logo-disrupy-branca.svg" alt="Disrupy" width={120} height={28} priority />
-                <p
-                  className="text-xs mt-2 tracking-[0.2em] uppercase whitespace-nowrap"
-                  style={{ color: "rgba(255,255,255,0.35)" }}
-                >
-                  Faturamento
-                </p>
-              </div>
-              <button
-                onClick={toggleCollapsed}
-                title="Minimizar"
-                className="p-1.5 rounded-md ml-2 flex-shrink-0 transition-all"
+            <div className="min-w-0">
+              <Image src="/logo-disrupy-branca.svg" alt="Disrupy" width={120} height={28} priority />
+              <p
+                className="text-xs mt-2 tracking-[0.2em] uppercase whitespace-nowrap"
                 style={{ color: "rgba(255,255,255,0.35)" }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "white";
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.08)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.35)";
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }}
               >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-            </>
+                Faturamento
+              </p>
+            </div>
           )}
         </div>
 
@@ -209,26 +181,6 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUser }) {
             <LogOut className="w-4 h-4 flex-shrink-0" />
             {!collapsed && "Sair"}
           </button>
-
-          {/* Expand button — visible only when collapsed */}
-          {collapsed && (
-            <button
-              onClick={toggleCollapsed}
-              title="Expandir"
-              className="w-full flex items-center justify-center rounded-lg p-2 transition-all duration-150"
-              style={{ color: "rgba(255,255,255,0.3)" }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.color = "white";
-                (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.08)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.3)";
-                (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-              }}
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
 
           {!collapsed && (
             <p className="text-xs px-3 pt-1" style={{ color: "rgba(255,255,255,0.2)" }}>v0.1.0 · MVP</p>
