@@ -70,12 +70,13 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUser }) {
           }}
         >
           {collapsed ? (
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-              style={{ backgroundColor: "#2E60FF" }}
-            >
-              D
-            </div>
+            <Image
+              src="/disrupy-azul.png"
+              alt="Disrupy"
+              width={32}
+              height={32}
+              className="rounded-lg flex-shrink-0"
+            />
           ) : (
             <div className="min-w-0">
               <Image src="/logo-disrupy-branca.svg" alt="Disrupy" width={120} height={28} priority />
