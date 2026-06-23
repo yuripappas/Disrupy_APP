@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import {
   RefreshCw, AlertTriangle, CheckCircle, Clock,
   Upload, Loader2, ExternalLink, X, FileText,
@@ -42,15 +42,6 @@ function defaultValidade(tipo: string): string {
   return d.toISOString().split("T")[0];
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 const STATUS_CFG = {
   valida:   { label: "Válida",            icon: <CheckCircle    className="w-5 h-5" style={{ color: "#059669" }} />, color: "#059669", bg: "#ECFDF5", border: "#A7F3D0", textColor: "#064E3B" },
   vencendo: { label: "Vencendo em breve", icon: <Clock          className="w-5 h-5" style={{ color: "#D97706" }} />, color: "#D97706", bg: "#FFFBEB", border: "#FCD34D", textColor: "#78350F" },
@@ -78,48 +69,16 @@ function RenovarForm({
     setUploading(true);
     setErro(null);
 
-    const scriptUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL;
-    if (!scriptUrl) { setErro("Upload não configurado."); setUploading(false); return; }
-
     try {
-      const fileContent = await fileToBase64(arquivo);
-      const nomeArquivo = `CERTIDAO_${certidao.tipo.toUpperCase()}_${arquivo.name}`;
+      const form = new FormData();
+      form.append("file",     arquivo);
+      form.append("id",       certidao.id);
+      form.append("validade", validade);
 
-      const driveRes = await fetch(scriptUrl, {
-        method:  "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({
-          fileName:       nomeArquivo,
-          fileContent,
-          mimeType:       arquivo.type || "application/pdf",
-          ano:            new Date().getFullYear(),
-          clienteGrupo:   "",
-          clienteNome:    "DISRUPY",
-          jobId:          "CERTIDOES",
-          campanha:       "CERTIDOES_AGENCIA",
-          subpasta:       "CERTIDÕES",
-          fornecedorNome: "DISRUPY",
-        }),
-      });
+      const res = await fetch("/api/certidoes-globais", { method: "POST", body: form });
 
-      if (!driveRes.ok) throw new Error(`Drive error ${driveRes.status}`);
-      const driveData = await driveRes.json() as { ok: boolean; viewUrl?: string; error?: string };
-      if (!driveData.ok || !driveData.viewUrl) throw new Error(driveData.error ?? "Sem URL do Drive");
-
-      const patchRes = await fetch("/api/certidoes-globais", {
-        method:  "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id:             certidao.id,
-          arquivo_url:    driveData.viewUrl,
-          nome_arquivo:   nomeArquivo,
-          tamanho_bytes:  arquivo.size,
-          validade,
-        }),
-      });
-
-      if (!patchRes.ok) { const j = await patchRes.json(); throw new Error(j.error ?? "Erro ao salvar"); }
-      const { certidao: updated } = await patchRes.json() as { certidao: Certidao };
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? "Erro no upload"); }
+      const { certidao: updated } = await res.json() as { certidao: Certidao };
       onSalva(updated);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro no upload");

@@ -48,7 +48,13 @@ function extractDriveFileId(url: string): string | null {
   return null;
 }
 
-async function downloadPdfFromUrl(url: string): Promise<Uint8Array | null> {
+type FileResult =
+  | { type: 'pdf'; bytes: Uint8Array }
+  | { type: 'png'; bytes: Uint8Array }
+  | { type: 'jpg'; bytes: Uint8Array }
+  | null;
+
+async function downloadFile(url: string): Promise<FileResult> {
   // Google Drive: usa URL de download direto (confirm=t pula aviso de arquivo grande)
   // Supabase Storage / qualquer outra URL: faz fetch direto
   const fileId = extractDriveFileId(url);
@@ -64,18 +70,51 @@ async function downloadPdfFromUrl(url: string): Promise<Uint8Array | null> {
 
     if (!res.ok) return null;
 
-    const buf = await res.arrayBuffer();
+    const buf   = await res.arrayBuffer();
     const bytes = new Uint8Array(buf);
 
-    // Valida assinatura PDF (%PDF-) — URLs externas não-PDF retornam null
-    if (bytes[0] !== 0x25 || bytes[1] !== 0x50 || bytes[2] !== 0x44 || bytes[3] !== 0x46) {
-      return null;
+    // PDF: %PDF-
+    if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+      return { type: 'pdf', bytes };
+    }
+    // PNG: \x89PNG
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+      return { type: 'png', bytes };
+    }
+    // JPEG: \xFF\xD8\xFF
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+      return { type: 'jpg', bytes };
     }
 
-    return bytes;
+    return null;
   } catch {
     return null;
   }
+}
+
+async function embedImageAsPage(pdf: PDFDocument, bytes: Uint8Array, type: 'png' | 'jpg'): Promise<void> {
+  const A4_W   = 595.28;
+  const A4_H   = 841.89;
+  const MARGIN = 36;
+
+  const image = type === 'png'
+    ? await pdf.embedPng(bytes)
+    : await pdf.embedJpg(bytes);
+
+  const { width: imgW, height: imgH } = image.scale(1);
+  const maxW  = A4_W - MARGIN * 2;
+  const maxH  = A4_H - MARGIN * 2;
+  const scale = Math.min(maxW / imgW, maxH / imgH, 1);
+  const drawW = imgW * scale;
+  const drawH = imgH * scale;
+
+  const page = pdf.addPage([A4_W, A4_H]);
+  page.drawImage(image, {
+    x:      (A4_W - drawW) / 2,
+    y:      (A4_H - drawH) / 2,
+    width:  drawW,
+    height: drawH,
+  });
 }
 
 // ── Página de capa (para links externos ou downloads que falharam) ─────────────
@@ -202,20 +241,30 @@ async function gerarPdfMesclado(blocos: Bloco[]): Promise<Uint8Array> {
         continue;
       }
 
-      // Tenta baixar o PDF (Drive, Supabase Storage, ou qualquer URL de arquivo)
-      const pdfBytes = await downloadPdfFromUrl(doc.arquivo_url);
+      // Baixa o arquivo e detecta o tipo (PDF, PNG, JPEG ou desconhecido)
+      const file = await downloadFile(doc.arquivo_url);
 
-      if (!pdfBytes) {
-        // Download falhou ou URL não aponta para PDF (evidência externa): capa com link
+      if (!file) {
+        // Download falhou ou formato não suportado (evidência externa): capa com link
         await criarPaginaCapa(pdf, fontBold, fontRegular, doc.label, doc.arquivo_url, bloco.titulo, tipoLabel);
         continue;
       }
 
-      // Mescla páginas do PDF baixado no documento principal
+      // PNG ou JPEG: embute como página A4 centralizada
+      if (file.type === 'png' || file.type === 'jpg') {
+        try {
+          await embedImageAsPage(pdf, file.bytes, file.type);
+        } catch {
+          await criarPaginaCapa(pdf, fontBold, fontRegular, doc.label, doc.arquivo_url, bloco.titulo, tipoLabel);
+        }
+        continue;
+      }
+
+      // PDF: mescla páginas no documento principal
       try {
-        const extPdf   = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-        const indices  = extPdf.getPageIndices();
-        const copied   = await pdf.copyPages(extPdf, indices);
+        const extPdf  = await PDFDocument.load(file.bytes, { ignoreEncryption: true });
+        const indices = extPdf.getPageIndices();
+        const copied  = await pdf.copyPages(extPdf, indices);
         copied.forEach(p => pdf.addPage(p));
       } catch {
         // PDF corrompido ou protegido: capa com link como fallback
