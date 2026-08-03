@@ -1131,12 +1131,19 @@ function PendingFornecedorCard({
   ff: FF;
   onAssociated: (ffId: string, fornecedor: FornecedorEmbed) => void;
 }) {
-  type Mode = "idle" | "search" | "loading";
+  type Mode = "idle" | "search" | "loading" | "create" | "creating";
   const [mode, setMode] = useState<Mode>("idle");
   const [busca, setBusca] = useState("");
   const [dbFornecedores, setDbFornecedores] = useState<DbFornecedorSimple[]>([]);
   const [dbLoaded, setDbLoaded] = useState(false);
   const [erro, setErro] = useState("");
+  const [createForm, setCreateForm] = useState({
+    tipo: ff.tipo_iclips ?? "midia",
+    cnpj: "",
+    contato_nome: "",
+    contato_whatsapp: "",
+    contato_email: "",
+  });
 
   async function iniciarAssociar() {
     if (!dbLoaded) {
@@ -1179,6 +1186,53 @@ function PendingFornecedorCard({
     });
   }
 
+  async function handleCriarEAssociar(e: React.FormEvent) {
+    e.preventDefault();
+    setMode("creating");
+    setErro("");
+    const supabase = createClient();
+    const { data: novoForn, error: insErr } = await supabase
+      .from("fornecedores")
+      .insert({
+        tipo: createForm.tipo,
+        razao_social: (ff.nome_iclips ?? "FORNECEDOR").toUpperCase(),
+        cnpj: createForm.cnpj.trim() || null,
+        contato_nome: createForm.contato_nome.trim() || null,
+        contato_whatsapp: createForm.contato_whatsapp.replace(/\D/g, "") || null,
+        contato_email: createForm.contato_email.trim() || null,
+        ativo: true,
+      })
+      .select("id, razao_social, cnpj, tipo, contato_nome, contato_whatsapp, contato_email")
+      .single();
+
+    if (insErr || !novoForn) {
+      setErro(insErr?.message ?? "Erro ao criar fornecedor");
+      setMode("create");
+      return;
+    }
+
+    const res = await fetch("/api/faturamento-fornecedores", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ffId: ff.id, fornecedorId: novoForn.id }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setErro(j.error ?? "Erro ao associar");
+      setMode("create");
+      return;
+    }
+    onAssociated(ff.id, {
+      id:               novoForn.id,
+      razao_social:     novoForn.razao_social,
+      cnpj:             novoForn.cnpj,
+      tipo:             novoForn.tipo,
+      contato_nome:     novoForn.contato_nome,
+      contato_whatsapp: novoForn.contato_whatsapp,
+      contato_email:    novoForn.contato_email,
+    });
+  }
+
   const filtrados = busca
     ? dbFornecedores.filter((f) =>
         normalizeName(f.razao_social).includes(normalizeName(busca))
@@ -1218,20 +1272,117 @@ function PendingFornecedorCard({
 
       <div className="px-5 pb-4">
         {mode === "idle" && (
-          <button
-            onClick={iniciarAssociar}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-amber-100"
-            style={{ borderColor: "#F59E0B", color: "#92400E", backgroundColor: "#FEF3C7" }}
-          >
-            <Link2 className="w-3 h-3" />
-            Associar a fornecedor do cadastro
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={iniciarAssociar}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-amber-100"
+              style={{ borderColor: "#F59E0B", color: "#92400E", backgroundColor: "#FEF3C7" }}
+            >
+              <Link2 className="w-3 h-3" />
+              Associar a fornecedor do cadastro
+            </button>
+            <button
+              onClick={() => { setMode("create"); setErro(""); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-blue-50"
+              style={{ borderColor: "#BFDBFE", color: "#1D4ED8", backgroundColor: "#EFF6FF" }}
+            >
+              <UserPlus className="w-3 h-3" />
+              Cadastrar como novo fornecedor
+            </button>
+          </div>
         )}
 
-        {mode === "loading" && (
+        {(mode === "loading" || mode === "creating") && (
           <div className="flex items-center gap-2 text-xs" style={{ color: "#64748B" }}>
-            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Associando...
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            {mode === "creating" ? "Cadastrando e associando..." : "Associando..."}
           </div>
+        )}
+
+        {(mode === "create" || mode === "creating") && mode !== "creating" && (
+          <form onSubmit={handleCriarEAssociar} className="space-y-3">
+            <p className="text-xs font-medium" style={{ color: "#374151" }}>
+              Criar fornecedor: <span style={{ color: "#0F172A" }}>{(ff.nome_iclips ?? "Fornecedor").toUpperCase()}</span>
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs mb-1" style={{ color: "#475569" }}>Tipo</label>
+                <select
+                  value={createForm.tipo}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, tipo: e.target.value }))}
+                  className="w-full px-2 py-1.5 text-xs rounded-lg border outline-none bg-white"
+                  style={{ borderColor: "#CBD5E1", color: "#334155" }}
+                >
+                  <option value="midia">Mídia</option>
+                  <option value="producao">Produção</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: "#475569" }}>CNPJ (opcional)</label>
+                <input
+                  type="text"
+                  value={createForm.cnpj}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, cnpj: e.target.value }))}
+                  placeholder="00.000.000/0001-00"
+                  className="w-full px-2 py-1.5 text-xs rounded-lg border outline-none bg-white"
+                  style={{ borderColor: "#CBD5E1", color: "#334155" }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-xs mb-1" style={{ color: "#475569" }}>Nome contato</label>
+                <input
+                  type="text"
+                  value={createForm.contato_nome}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, contato_nome: e.target.value }))}
+                  placeholder="João Silva"
+                  className="w-full px-2 py-1.5 text-xs rounded-lg border outline-none bg-white"
+                  style={{ borderColor: "#CBD5E1", color: "#334155" }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: "#475569" }}>WhatsApp</label>
+                <input
+                  type="tel"
+                  value={createForm.contato_whatsapp}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, contato_whatsapp: e.target.value }))}
+                  placeholder="5582999999999"
+                  className="w-full px-2 py-1.5 text-xs font-mono rounded-lg border outline-none bg-white"
+                  style={{ borderColor: "#CBD5E1", color: "#334155" }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: "#475569" }}>E-mail</label>
+                <input
+                  type="email"
+                  value={createForm.contato_email}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, contato_email: e.target.value }))}
+                  placeholder="contato@empresa.com"
+                  className="w-full px-2 py-1.5 text-xs rounded-lg border outline-none bg-white"
+                  style={{ borderColor: "#CBD5E1", color: "#334155" }}
+                />
+              </div>
+            </div>
+            {erro && <p className="text-xs" style={{ color: "#DC2626" }}>{erro}</p>}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+                style={{ backgroundColor: "#2E60FF" }}
+              >
+                <Check className="w-3 h-3" /> Cadastrar e associar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMode("idle"); setErro(""); }}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border"
+                style={{ borderColor: "#E2E8F0", color: "#64748B" }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
         )}
 
         {mode === "search" && (
