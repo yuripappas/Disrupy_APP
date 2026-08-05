@@ -1,6 +1,8 @@
 import { createClient as createAdmin } from "@supabase/supabase-js";
 import { FornecedoresClient } from "./FornecedoresClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function FornecedoresPage() {
   const admin = createAdmin(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
