@@ -93,15 +93,45 @@ export async function deletarInstancia(instanceName: string) {
   });
 }
 
+// ── Normalizar número brasileiro ───────────────────────────────────────────────
+export function normalizarNumero(numero: string): string {
+  const num = numero.replace(/\D/g, '');
+  return num.startsWith('55') ? num : `55${num}`;
+}
+
+// ── Verificar se número(s) existem no WhatsApp ─────────────────────────────────
+export async function verificarNumeros(
+  instanceName: string,
+  numeros: string[],
+): Promise<Array<{ number: string; jid: string | null; exists: boolean }>> {
+  const normalizados = numeros.map(normalizarNumero);
+  const res = await fetch(`${BASE_URL}/chat/whatsappNumbers/${instanceName}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ numbers: normalizados }),
+  });
+  if (!res.ok) return normalizados.map(n => ({ number: n, jid: null, exists: false }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json();
+  const list = Array.isArray(data) ? data : [];
+  return normalizados.map(n => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = list.find((e: any) => e.number === n || e.jid?.startsWith(n));
+    return {
+      number: n,
+      jid: entry?.jid ?? null,
+      exists: entry?.exists === true,
+    };
+  });
+}
+
 // ── Enviar mensagem de texto ───────────────────────────────────────────────────
 export async function enviarMensagem(
   instanceName: string,
   numero: string,
   texto: string,
 ): Promise<{ key: { id: string; remoteJid: string } }> {
-  // Normaliza: remove tudo que não é dígito, adiciona 55 se não tiver DDI
-  const num = numero.replace(/\D/g, '');
-  const destino = num.startsWith('55') ? num : `55${num}`;
+  const destino = normalizarNumero(numero);
 
   const res = await fetch(`${BASE_URL}/message/sendText/${instanceName}`, {
     method: 'POST',

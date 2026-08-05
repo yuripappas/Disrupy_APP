@@ -1,9 +1,23 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Smartphone, RefreshCw, X, CheckCircle, Wifi, WifiOff, Loader2 } from 'lucide-react';
+import { Smartphone, RefreshCw, X, CheckCircle, Wifi, WifiOff, Loader2, FlaskConical, AlertTriangle, Send } from 'lucide-react';
 
 type Status = 'carregando' | 'nao_configurado' | 'conectando' | 'open' | 'close';
+
+type DiagResult = {
+  estado: string;
+  numeroConectado: string | null;
+  verificacaoNumero: { number: string; jid: string | null; exists: boolean } | null;
+  raw: unknown;
+} | null;
+
+type TestResult = {
+  destino: string;
+  sendOk: boolean;
+  sendError: string | null;
+  raw: unknown;
+} | null;
 
 export function WhatsAppConfig() {
   const [status, setStatus]   = useState<Status>('carregando');
@@ -14,14 +28,21 @@ export function WhatsAppConfig() {
   const [erro, setErro]       = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Busca estado + QR (GET agora retorna qrCode quando conectando) ───────────
+  // ── Diagnóstico ──────────────────────────────────────────────────────────────
+  const [showDiag, setShowDiag]   = useState(false);
+  const [diagNumero, setDiagNumero] = useState('');
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [diagResult, setDiagResult]   = useState<DiagResult>(null);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult]   = useState<TestResult>(null);
+
+  // ── Busca estado + QR ────────────────────────────────────────────────────────
   async function buscarEstado() {
     const res  = await fetch('/api/whatsapp/instancia');
     const data = await res.json();
     const st: Status = data.status ?? 'close';
     setStatus(st);
     setNumber(data.number ?? null);
-    // Atualiza QR se vier na resposta
     if (data.qrCode) setQrCode(data.qrCode);
     return st;
   }
@@ -35,20 +56,17 @@ export function WhatsAppConfig() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }
 
-  // ── Polling — verifica estado + atualiza QR ──────────────────────────────────
   function iniciarPolling() {
     pararPolling();
     pollRef.current = setInterval(async () => {
       const st = await buscarEstado();
       if (st === 'open') {
         pararPolling();
-        // Mostra "conectado" por 1.5s antes de fechar o modal
         setTimeout(() => setModal(false), 1500);
       }
     }, 2000);
   }
 
-  // ── Conectar — POST cria instância, polling busca QR ─────────────────────────
   async function conectar() {
     setLoading(true);
     setErro(null);
@@ -67,11 +85,9 @@ export function WhatsAppConfig() {
     }
 
     setLoading(false);
-    // Inicia polling imediatamente — GET retorna QR quando disponível
     iniciarPolling();
   }
 
-  // ── Atualizar QR manualmente — busca QR atual do GET ────────────────────────
   async function atualizarQr() {
     setQrCode(null);
     setLoading(true);
@@ -79,7 +95,6 @@ export function WhatsAppConfig() {
     setLoading(false);
   }
 
-  // ── Desconectar ──────────────────────────────────────────────────────────────
   async function desconectar() {
     if (!confirm('Deseja desconectar o WhatsApp?')) return;
     setLoading(true);
@@ -91,11 +106,36 @@ export function WhatsAppConfig() {
     setLoading(false);
   }
 
-  // ── Fechar modal ─────────────────────────────────────────────────────────────
   function fecharModal() {
     pararPolling();
     setModal(false);
     buscarEstado();
+  }
+
+  // ── Diagnóstico ──────────────────────────────────────────────────────────────
+  async function executarDiagnostico() {
+    setDiagLoading(true);
+    setDiagResult(null);
+    setTestResult(null);
+    const params = diagNumero ? `?numero=${encodeURIComponent(diagNumero.replace(/\D/g, ''))}` : '';
+    const res = await fetch(`/api/whatsapp/diagnostico${params}`);
+    const data = await res.json();
+    setDiagResult(data);
+    setDiagLoading(false);
+  }
+
+  async function enviarTeste() {
+    if (!diagNumero) return;
+    setTestLoading(true);
+    setTestResult(null);
+    const res = await fetch('/api/whatsapp/diagnostico', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ numero: diagNumero }),
+    });
+    const data = await res.json();
+    setTestResult(data);
+    setTestLoading(false);
   }
 
   return (
@@ -118,14 +158,28 @@ export function WhatsAppConfig() {
 
         <div className="flex items-center gap-2">
           {status === 'open' && (
-            <button
-              onClick={desconectar}
-              disabled={loading}
-              className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
-              style={{ borderColor: '#E2E8F0', color: '#64748B' }}
-            >
-              Desconectar
-            </button>
+            <>
+              <button
+                onClick={() => setShowDiag(v => !v)}
+                className="text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors"
+                style={{
+                  borderColor: showDiag ? '#BFDBFE' : '#E2E8F0',
+                  backgroundColor: showDiag ? '#EFF6FF' : 'transparent',
+                  color: showDiag ? '#1D4ED8' : '#64748B',
+                }}
+              >
+                <FlaskConical className="w-3 h-3" />
+                Diagnóstico
+              </button>
+              <button
+                onClick={desconectar}
+                disabled={loading}
+                className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                style={{ borderColor: '#E2E8F0', color: '#64748B' }}
+              >
+                Desconectar
+              </button>
+            </>
           )}
 
           {(status === 'nao_configurado' || status === 'close') && (
@@ -153,6 +207,119 @@ export function WhatsAppConfig() {
           <StatusDot status={status} />
         </div>
       </div>
+
+      {/* Painel de diagnóstico */}
+      {showDiag && (
+        <div
+          className="mx-5 mb-4 rounded-xl p-4 space-y-3"
+          style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}
+        >
+          <p className="text-xs font-semibold" style={{ color: '#334155' }}>
+            Diagnóstico da conexão
+          </p>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Número com DDD (ex: 82999999999)"
+              value={diagNumero}
+              onChange={e => setDiagNumero(e.target.value)}
+              className="flex-1 text-xs px-3 py-2 rounded-lg border outline-none"
+              style={{ borderColor: '#CBD5E1', color: '#334155' }}
+            />
+            <button
+              onClick={executarDiagnostico}
+              disabled={diagLoading}
+              className="text-xs px-3 py-2 rounded-lg font-medium flex items-center gap-1.5"
+              style={{ backgroundColor: '#1D4ED8', color: '#fff', opacity: diagLoading ? 0.6 : 1 }}
+            >
+              {diagLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Verificar'}
+            </button>
+            <button
+              onClick={enviarTeste}
+              disabled={testLoading || !diagNumero}
+              className="text-xs px-3 py-2 rounded-lg font-medium flex items-center gap-1.5"
+              style={{ backgroundColor: '#16A34A', color: '#fff', opacity: (testLoading || !diagNumero) ? 0.5 : 1 }}
+            >
+              {testLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Send className="w-3 h-3" /> Testar envio</>}
+            </button>
+          </div>
+
+          {/* Resultado do diagnóstico */}
+          {diagResult && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-4 flex-wrap">
+                <DiagItem label="Estado" value={diagResult.estado} ok={diagResult.estado === 'open'} />
+                <DiagItem
+                  label="Número conectado"
+                  value={diagResult.numeroConectado
+                    ? diagResult.numeroConectado.replace('@s.whatsapp.net', '')
+                    : '—'}
+                  ok={!!diagResult.numeroConectado}
+                />
+                {diagResult.verificacaoNumero && (
+                  <DiagItem
+                    label={`Número ${diagResult.verificacaoNumero.number} no WhatsApp`}
+                    value={diagResult.verificacaoNumero.exists ? 'Cadastrado ✓' : 'NÃO encontrado'}
+                    ok={diagResult.verificacaoNumero.exists}
+                  />
+                )}
+              </div>
+
+              {diagResult.verificacaoNumero && !diagResult.verificacaoNumero.exists && (
+                <div
+                  className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+                  style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>
+                    Este número <strong>não está cadastrado no WhatsApp</strong>. Mensagens enviadas a ele nunca chegarão, mesmo que a API confirme o envio.
+                  </span>
+                </div>
+              )}
+
+              <details className="text-xs">
+                <summary className="cursor-pointer" style={{ color: '#94A3B8' }}>Ver resposta bruta da API</summary>
+                <pre
+                  className="mt-2 p-3 rounded-lg overflow-auto text-xs"
+                  style={{ backgroundColor: '#1E293B', color: '#94A3B8', maxHeight: '200px' }}
+                >
+                  {JSON.stringify(diagResult.raw, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
+
+          {/* Resultado do teste de envio */}
+          {testResult && (
+            <div
+              className="px-3 py-2 rounded-lg text-xs space-y-1"
+              style={{
+                backgroundColor: testResult.sendOk ? '#F0FDF4' : '#FEF2F2',
+                border: `1px solid ${testResult.sendOk ? '#BBF7D0' : '#FECACA'}`,
+              }}
+            >
+              <p className="font-medium" style={{ color: testResult.sendOk ? '#16A34A' : '#DC2626' }}>
+                {testResult.sendOk
+                  ? `✓ Mensagem enviada para ${testResult.destino}`
+                  : `✗ Falha ao enviar para ${testResult.destino}`}
+              </p>
+              {testResult.sendError && (
+                <p style={{ color: '#DC2626' }}>{testResult.sendError}</p>
+              )}
+              <details>
+                <summary className="cursor-pointer" style={{ color: '#94A3B8' }}>Resposta bruta</summary>
+                <pre
+                  className="mt-1 p-2 rounded overflow-auto"
+                  style={{ backgroundColor: '#1E293B', color: '#94A3B8', maxHeight: '160px' }}
+                >
+                  {JSON.stringify(testResult.raw, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal QR Code */}
       {modal && (
@@ -257,6 +424,15 @@ export function WhatsAppConfig() {
         </div>
       )}
     </>
+  );
+}
+
+function DiagItem({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs" style={{ color: '#94A3B8' }}>{label}</span>
+      <span className="text-xs font-medium" style={{ color: ok ? '#16A34A' : '#DC2626' }}>{value}</span>
+    </div>
   );
 }
 
