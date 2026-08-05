@@ -790,7 +790,7 @@ function LockedDocCard({ doc }: { doc: Documento }) {
 
 // ── PortalClient ──────────────────────────────────────────────────────────────
 
-export function PortalClient({ ff, token }: { ff: FF; token: string }) {
+export function PortalClient({ ff, token, videoUrl = "" }: { ff: FF; token: string; videoUrl?: string }) {
   const [docs, setDocs] = useState<Documento[]>(
     ff.documentos.map((d) => ({
       ...d,
@@ -919,6 +919,9 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
           )}
         </div>
 
+        {/* Vídeo de instruções */}
+        {videoUrl && <VideoCard url={videoUrl} />}
+
         {/* Documentos */}
         <div className="space-y-3">
           {docs
@@ -955,4 +958,74 @@ export function PortalClient({ ff, token }: { ff: FF; token: string }) {
       </div>
     </div>
   );
+}
+
+// ── VideoCard ─────────────────────────────────────────────────────────────────
+
+function extrairYoutubeId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1).split("?")[0];
+    if (u.hostname.includes("youtube.com")) return u.searchParams.get("v");
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function VideoCard({ url }: { url: string }) {
+  const [aberto, setAberto] = useState(false);
+  const videoId = extrairYoutubeId(url);
+  if (!videoId) return null;
+
+  return (
+    <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#E2E8F0" }}>
+      <button
+        onClick={() => setAberto((v) => !v)}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left"
+        style={{ backgroundColor: aberto ? "#EFF6FF" : "white" }}
+      >
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+          style={{ backgroundColor: "#DBEAFE" }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" style={{ color: "#2E60FF" }}>
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+            <polygon points="10,8 16,12 10,16" fill="currentColor" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium" style={{ color: "#0F172A" }}>
+            Está com dúvida de como preencher?
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: "#64748B" }}>
+            {aberto ? "Fechar vídeo" : "Assista o vídeo de instruções"}
+          </p>
+        </div>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="w-4 h-4 flex-shrink-0 transition-transform duration-200"
+          style={{ color: "#94A3B8", transform: aberto ? "rotate(180deg)" : "rotate(0deg)" }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {aberto && (
+        <div style={{ position: "relative", paddingBottom: "56.25%", height: 0 }}>
+          <iframe
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`}
+            title="Vídeo de instruções"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 }

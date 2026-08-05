@@ -1,7 +1,23 @@
-import { Settings, Bell, Globe, Key } from "lucide-react";
+import { Settings, Bell, Globe, Key, MonitorPlay } from "lucide-react";
 import { WhatsAppConfig } from "@/components/configuracoes/WhatsAppConfig";
+import { PortalConfig } from "@/components/configuracoes/PortalConfig";
+import { createClient as createAdmin } from "@supabase/supabase-js";
 
-export default function ConfiguracoesPage() {
+async function getConfiguracoes(): Promise<Record<string, string>> {
+  const admin = createAdmin(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+  const { data } = await admin.from("configuracoes").select("chave, valor");
+  const cfg: Record<string, string> = {};
+  for (const row of data ?? []) cfg[row.chave] = row.valor ?? "";
+  return cfg;
+}
+
+export default async function ConfiguracoesPage() {
+  const cfg = await getConfiguracoes().catch(() => ({} as Record<string, string>));
+
   return (
     <div className="space-y-4 max-w-2xl">
       <Section icon={<Globe className="w-4 h-4" />} title="Integrações">
@@ -13,6 +29,10 @@ export default function ConfiguracoesPage() {
       <Section icon={<Bell className="w-4 h-4" />} title="Notificações">
         <ConfigItem label="WhatsApp para fornecedores" value="Prazo padrão: 5 dias úteis" status="ok" />
         <ConfigItem label="E-mail de alertas" value="Não configurado" status="pending" />
+      </Section>
+
+      <Section icon={<MonitorPlay className="w-4 h-4" />} title="Portal de Fornecedores">
+        <PortalConfig videoUrlInicial={cfg.portal_video_url ?? ""} />
       </Section>
 
       <Section icon={<Key className="w-4 h-4" />} title="Automações">
