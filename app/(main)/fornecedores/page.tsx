@@ -12,7 +12,8 @@ export default async function FornecedoresPage() {
     .from("fornecedores")
     .select("*")
     .eq("ativo", true)
-    .order("razao_social");
+    .order("razao_social")
+    .limit(9999);
 
   return <FornecedoresClient fornecedores={fornecedores ?? []} />;
 }
